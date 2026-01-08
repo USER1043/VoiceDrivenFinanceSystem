@@ -1,31 +1,35 @@
-# 🎙️ VoxFi — Voice‑Driven Finance System
+# 🎙️ VoxFin — Voice‑Driven Finance System
 
-VoxFi is a **voice‑first personal finance assistant** that allows users to manage budgets, track expenses, and check spending using **natural language (text or voice)**.
+VoxFin is a **voice‑first personal finance assistant** that enables users to manage budgets, track expenses, and monitor spending using **natural language (text or voice)**.
 
-The system is designed with a **clean separation of concerns**:
-- **Frontend** handles UI, Speech‑to‑Text (STT), and Text‑to‑Speech (TTS)
-- **Backend** handles intent detection, slot extraction, business logic, database persistence, and analytics
+The project is built with a **clean frontend–backend separation**, making it scalable, testable, and production‑ready.
 
-This architecture makes the system **scalable**, **modular**, and **production‑ready**.
+---
+
+## 🚀 What VoxFin Does
+
+- Set and update budgets using natural language  
+- Record expenses using voice or text  
+- Check total spending and financial summaries  
+- Generate spoken responses (TTS)  
+- Maintain audit logs for financial actions  
 
 ---
 
 ## 🧠 Core Features
 
 ### ✅ Budget Management
-- Set or update budgets using natural language  
-  _Example_: `set food budget to 6000`
-- Budgets are stored per user and category
+- Example: `set food budget to 6000`
+- Stored per user and category
 
 ### ✅ Expense Tracking
-- Record expenses via text or voice  
-  _Example_: `i spent 250 on food`
-- Expenses contribute to analytics and balance checks
+- Example: `i spent 250 on food`
+- Adds to transaction history and analytics
 
-### ✅ Voice Support
-- **STT**: Converts speech → text (frontend)
-- **TTS**: Converts system response → speech (frontend)
-- Backend remains **voice‑agnostic** and works purely on text
+### ✅ Voice Interaction
+- **Speech‑to‑Text (STT)** handled in frontend
+- **Text‑to‑Speech (TTS)** handled in frontend
+- Backend remains **text‑only and deterministic**
 
 ### ✅ Intent Detection
 Supported intents:
@@ -36,7 +40,7 @@ Supported intents:
 - `UNKNOWN`
 
 ### ✅ Analytics
-- Total spending
+- Total amount spent
 - Budget summaries
 - Reminder count
 
@@ -46,4 +50,15 @@ Supported intents:
 ---
 
 ## 🏗️ System Architecture
-
+Frontend (React + Web APIs)
+├─ UI (Chat‑style interface)
+├─ Speech Recognition (STT)
+├─ Speech Synthesis (TTS)
+└─ Axios API Client
+↓
+Backend (FastAPI)
+├─ Intent Detection
+├─ Slot Extraction
+├─ Business Logic
+├─ Database (SQLAlchemy)
+└─ Analytics
