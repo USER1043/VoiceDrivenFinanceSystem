@@ -1,0 +1,2291 @@
+========================================
+__init__.py : python code
+========================================
+
+
+
+========================================
+api/__init__.py : python code
+========================================
+
+
+
+========================================
+api/deps.py : python code
+========================================
+# dependencies
+from app.db.session import SessionLocal
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+
+========================================
+api/routes/__init__.py : python code
+========================================
+from app.api.routes.health import router as health_router
+from app.api.routes.voice import router as voice_router
+
+all_routers = [
+    health_router,
+    voice_router,
+]
+
+
+
+========================================
+api/routes/health.py : python code
+========================================
+from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+
+========================================
+api/routes/voice.py : python code
+========================================
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+
+from app.api.deps import get_db
+from app.intent.detector import detect_intent, Intent
+from app.intent.slots import (
+    extract_budget_slots,
+    extract_reminder_slots,
+    extract_transaction_slots
+)
+from app.services.budgets import set_budget, get_budget, get_all_budgets
+from app.services.reminders import create_reminder
+from app.services.transactions import add_transaction, get_transactions, get_total_spent
+
+router = APIRouter()
+
+
+class VoiceRequest(BaseModel):
+    text: str
+
+
+@router.post("/voice")
+def handle_voice(
+    request: VoiceRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Handle voice commands by detecting intent and executing appropriate action.
+    Uses functions from other modules.
+    """
+    
+    text = request.text
+    intent = detect_intent(text)
+
+    if intent == Intent.UPDATE_BUDGET:
+        slots = extract_budget_slots(text)
+        
+        if not slots["category"] or not slots["limit"]:
+            return {
+                "message": "Could not extract budget information. Please specify category and limit.",
+                "intent": intent.value
+            }
+
+        budget = set_budget(
+            db=db,
+            user_id=1,
+            category=slots["category"],
+            limit=slots["limit"]
+        )
+
+        return {
+            "message": "Budget updated successfully",
+            "intent": intent.value,
+            "category": budget.category,
+            "limit": budget.limit
+        }
+
+    elif intent == Intent.ADD_EXPENSE:
+        slots = extract_transaction_slots(text)
+        
+        if not slots["category"] or not slots["limit"]:
+            return {
+                "message": "Could not extract transaction information. Please specify category and amount.",
+                "intent": intent.value
+            }
+
+        transaction = add_transaction(
+            db=db,
+            user_id=1,
+            category=slots["category"],
+            limit=slots["limit"],
+            description=slots.get("description")
+        )
+
+        budget_warning = getattr(transaction, "budget_warning", None)
+        response = {
+            "message": "Expense added successfully",
+            "intent": intent.value,
+            "category": transaction.category,
+            "amount": transaction.limit,
+            "transaction_id": transaction.id
+        }
+        
+        if budget_warning:
+            response["budget_warning"] = budget_warning
+            response["message"] += f". {budget_warning}"
+
+        return response
+
+    elif intent == Intent.CREATE_REMINDER:
+        slots = extract_reminder_slots(text)
+        
+        if not slots["name"] or not slots["day"]:
+            return {
+                "message": "Could not extract reminder information. Please specify name and day.",
+                "intent": intent.value
+            }
+
+        reminder = create_reminder(
+            db=db,
+            user_id=1,
+            name=slots["name"],
+            day=slots["day"],
+            frequency=slots.get("frequency", "monthly")
+        )
+
+        return {
+            "message": "Reminder created successfully",
+            "intent": intent.value,
+            "name": reminder.name,
+            "day": reminder.day,
+            "frequency": reminder.frequency,
+            "reminder_id": reminder.id
+        }
+
+    elif intent == Intent.CHECK_BALANCE:
+        budgets = get_all_budgets(db=db, user_id=1)
+        transactions = get_transactions(db=db, user_id=1, limit=100)
+        
+        # Calculate remaining budget for each category
+        balance_info = []
+        for budget in budgets:
+            total_spent = get_total_spent(db=db, user_id=1, category=budget.category)
+            remaining = budget.limit - total_spent
+            
+            balance_info.append({
+                "category": budget.category,
+                "limit": budget.limit,
+                "spent": total_spent,
+                "remaining": remaining
+            })
+
+        return {
+            "message": "Balance information retrieved",
+            "intent": intent.value,
+            "balances": balance_info,
+            "total_transactions": len(transactions)
+        }
+
+    return {
+        "message": f"Intent '{intent.value}' not fully supported yet",
+        "intent": intent.value,
+        "text": text
+    }
+
+
+
+========================================
+audit/logger.py : python code
+========================================
+from app.db.models import AuditLog
+
+
+def log_action(db, user_id: int, action: str, details: str):
+    """
+    Writes an audit log entry to the database.
+    """
+    audit = AuditLog(
+        user_id=user_id,
+        action=action,
+        details=details
+    )
+    db.add(audit)
+    db.commit()
+
+
+
+========================================
+auth/__init__.py : python code
+========================================
+# Authentication module for Voice Driven Finance System
+
+
+========================================
+auth/security.py : python code
+========================================
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+import os
+
+from dotenv import load_dotenv
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
+# -----------------------------
+# LOAD ENV
+# -----------------------------
+
+load_dotenv()
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60)
+)
+
+if not JWT_SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY not set in .env")
+
+# -----------------------------
+# PASSWORD HASHING
+# -----------------------------
+
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
+)
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(
+    plain_password: str,
+    hashed_password: str
+) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+# -----------------------------
+# JWT TOKEN
+# -----------------------------
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+def create_access_token(
+    data: dict,
+    expires_delta: Optional[timedelta] = None
+) -> str:
+    to_encode = data.copy()
+
+    expire = datetime.now(timezone.utc) + (
+        expires_delta
+        if expires_delta
+        else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    to_encode.update({"exp": expire})
+
+    return jwt.encode(
+        to_encode,
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM
+    )
+
+# -----------------------------
+# CURRENT USER DEPENDENCY
+# -----------------------------
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme)
+) -> int:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM]
+        )
+
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+
+        return int(user_id)
+
+    except JWTError:
+        raise credentials_exception
+
+
+
+========================================
+auth/test_auth.py : python code
+========================================
+import pytest
+import os
+from datetime import timedelta
+from unittest.mock import patch
+from app.auth.security import (
+    create_access_token,
+    hash_password,
+    verify_password,
+    get_current_user
+)
+from jose import jwt, JWTError
+from fastapi import HTTPException, status
+
+
+@pytest.fixture
+def jwt_secret():
+    """Fixture to provide JWT secret for testing"""
+    return "test-secret-key-for-testing-only"
+
+
+class TestPasswordHashing:
+    """Test password hashing and verification"""
+    
+    def test_hash_password(self):
+        """Test that password hashing works"""
+        password = "test_password_123"
+        hashed = hash_password(password)
+        assert hashed != password
+        assert len(hashed) > 0
+    
+    def test_verify_password_correct(self):
+        """Test verifying correct password"""
+        password = "test_password_123"
+        hashed = hash_password(password)
+        assert verify_password(password, hashed) is True
+    
+    def test_verify_password_incorrect(self):
+        """Test verifying incorrect password"""
+        password = "test_password_123"
+        wrong_password = "wrong_password"
+        hashed = hash_password(password)
+        assert verify_password(wrong_password, hashed) is False
+
+
+class TestCreateAccessToken:
+    """Test JWT token creation"""
+    
+    @patch.dict(os.environ, {
+        "JWT_SECRET_KEY": "test-secret-key",
+        "JWT_ALGORITHM": "HS256",
+        "ACCESS_TOKEN_EXPIRE_MINUTES": "60"
+    })
+    def test_create_access_token_basic(self):
+        """Test creating a basic access token"""
+        data = {"sub": "1"}
+        token = create_access_token(data)
+        assert token is not None
+        assert isinstance(token, str)
+        assert len(token) > 0
+    
+    @patch.dict(os.environ, {
+        "JWT_SECRET_KEY": "test-secret-key",
+        "JWT_ALGORITHM": "HS256",
+        "ACCESS_TOKEN_EXPIRE_MINUTES": "60"
+    })
+    def test_create_access_token_with_custom_expiry(self):
+        """Test creating token with custom expiry"""
+        data = {"sub": "2"}
+        expires_delta = timedelta(minutes=30)
+        token = create_access_token(data, expires_delta)
+        assert token is not None
+        assert isinstance(token, str)
+    
+    def test_token_contains_user_data(self):
+        """Test that token contains the original data"""
+        # Need to use the actual JWT_SECRET_KEY from environment
+        secret_key = os.getenv("JWT_SECRET_KEY")
+        if not secret_key:
+            pytest.skip("JWT_SECRET_KEY not set in environment")
+        
+        data = {"sub": "3", "email": "test@example.com"}
+        token = create_access_token(data)
+        
+        # Decode token to verify data with the actual secret key
+        decoded = jwt.decode(
+            token,
+            secret_key,
+            algorithms=[os.getenv("JWT_ALGORITHM", "HS256")]
+        )
+        assert decoded["sub"] == "3"
+        assert decoded["email"] == "test@example.com"
+        assert "exp" in decoded
+
+
+
+========================================
+cache/__init__.py : python code
+========================================
+from .redis_client import redis_client
+from .state_store import (
+    get_state,
+    save_state,
+    clear_state,
+)
+
+__all__ = [
+    "redis_client",
+    "get_state",
+    "save_state",
+    "clear_state",
+]
+
+
+
+========================================
+cache/redis_client.py : python code
+========================================
+import os
+
+from dotenv import load_dotenv
+import redis
+
+load_dotenv()
+REDIS_URL = os.getenv("REDIS_URL")
+
+if not REDIS_URL:
+    raise RuntimeError("REDIS_URL is not set")
+
+redis_client = redis.Redis.from_url(
+    REDIS_URL,
+    decode_responses=True,
+    socket_timeout=5,
+    socket_connect_timeout=5,
+)
+
+
+
+========================================
+cache/state_store.py : python code
+========================================
+import json
+from typing import Dict, Optional
+from app.cache.redis_client import redis_client
+
+STATE_TTL = 300  # 5 minutes
+
+
+def get_state(user_id: int) -> Optional[Dict]:
+    data = redis_client.get(f"state:{user_id}")
+    return json.loads(data) if data else None
+
+
+def save_state(user_id: int, state: Dict):
+    redis_client.setex(
+        f"state:{user_id}",
+        STATE_TTL,
+        json.dumps(state)
+    )
+
+
+def clear_state(user_id: int):
+    redis_client.delete(f"state:{user_id}")
+
+
+
+========================================
+cache/test_redis.py : python code
+========================================
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from app.cache.redis_client import redis_client
+
+redis_client.set("health_check", "ok")
+print(redis_client.get("health_check"))
+
+
+
+========================================
+db/migrations/env.py : python code
+========================================
+from logging.config import fileConfig
+import os
+
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+from dotenv import load_dotenv
+
+# --------------------------------------------------
+# Load environment variables
+# --------------------------------------------------
+load_dotenv()
+
+config = context.config
+
+database_url = os.getenv("DIRECT_URL")
+if not database_url:
+    raise RuntimeError("DATABASE_URL not found in environment")
+
+config.set_main_option("sqlalchemy.url", database_url)
+
+# --------------------------------------------------
+# Logging configuration
+# --------------------------------------------------
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# --------------------------------------------------
+# Import models for autogenerate
+# --------------------------------------------------
+from app.db.session import Base
+from app.db import models
+
+target_metadata = Base.metadata
+
+# --------------------------------------------------
+# Offline migrations
+# --------------------------------------------------
+def run_migrations_offline() -> None:
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+# --------------------------------------------------
+# Online migrations
+# --------------------------------------------------
+def run_migrations_online() -> None:
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+# --------------------------------------------------
+# Entry point
+# --------------------------------------------------
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+
+
+========================================
+db/migrations/versions/93b03ce10a5d_initial_schema.py : python code
+========================================
+"""initial schema
+
+Revision ID: 93b03ce10a5d
+Revises: 
+Create Date: 2026-01-08 14:31:49.788890
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = '93b03ce10a5d'
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('audit_logs',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('action', sa.String(), nullable=False),
+    sa.Column('details', sa.Text(), nullable=False),
+    sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_audit_logs_id'), 'audit_logs', ['id'], unique=False)
+    op.create_table('users',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('email', sa.String(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
+    op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
+    op.create_table('budgets',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('category', sa.String(), nullable=False),
+    sa.Column('limit', sa.Float(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_budgets_id'), 'budgets', ['id'], unique=False)
+    op.create_table('reminders',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(), nullable=False),
+    sa.Column('day', sa.Integer(), nullable=False),
+    sa.Column('frequency', sa.String(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_reminders_id'), 'reminders', ['id'], unique=False)
+    op.create_table('transactions',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('category', sa.String(), nullable=False),
+    sa.Column('limit', sa.Float(), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_transactions_id'), 'transactions', ['id'], unique=False)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_transactions_id'), table_name='transactions')
+    op.drop_table('transactions')
+    op.drop_index(op.f('ix_reminders_id'), table_name='reminders')
+    op.drop_table('reminders')
+    op.drop_index(op.f('ix_budgets_id'), table_name='budgets')
+    op.drop_table('budgets')
+    op.drop_index(op.f('ix_users_id'), table_name='users')
+    op.drop_index(op.f('ix_users_email'), table_name='users')
+    op.drop_table('users')
+    op.drop_index(op.f('ix_audit_logs_id'), table_name='audit_logs')
+    op.drop_table('audit_logs')
+    # ### end Alembic commands ###
+
+
+
+========================================
+db/models.py : python code
+========================================
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    ForeignKey,
+    Text
+)
+from sqlalchemy.sql import func
+from app.db.session import Base
+
+
+# -----------------------------
+# User Model
+# -----------------------------
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# -----------------------------
+# Transaction Model
+# -----------------------------
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    category = Column(String, nullable=False)
+    limit = Column(Float, nullable=False)
+    description = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# -----------------------------
+# Budget Model
+# -----------------------------
+class Budget(Base):
+    __tablename__ = "budgets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    category = Column(String, nullable=False)
+    limit = Column(Float, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# -----------------------------
+# Reminder Model
+# -----------------------------
+class Reminder(Base):
+    __tablename__ = "reminders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    name = Column(String, nullable=False)
+    day = Column(Integer, nullable=False)          # day of month (1–28)
+    frequency = Column(String, nullable=False)     # monthly / weekly
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# -----------------------------
+# Audit Log Model
+# -----------------------------
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+
+    action = Column(String, nullable=False)
+    details = Column(Text, nullable=False)
+
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
+========================================
+db/seed_user.py : python code
+========================================
+from app.db.session import SessionLocal
+from app.db.models import User
+
+db = SessionLocal()
+
+user = User(email="demo@hackathon.com")
+db.add(user)
+db.commit()
+db.refresh(user)
+
+print("Demo user created with ID:", user.id)
+
+db.close()
+
+
+========================================
+db/session.py : python code
+========================================
+import os
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+load_dotenv()
+DATABASE_URL = os.getenv("DIRECT_URL")
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
+
+Base = declarative_base()
+
+
+
+========================================
+db/test_db.py : python code
+========================================
+from app.db.session import engine
+
+try:
+    with engine.connect() as conn:
+        print("✅ Connected to Supabase PostgreSQL")
+except Exception as e:
+    print("❌ Connection failed:", e)
+
+
+
+========================================
+db/test_services.py : python code
+========================================
+from app.db.session import SessionLocal
+from app.services.budgets import    set_budget
+
+db = SessionLocal()
+
+budget = set_budget(
+    db=db,
+    user_id=1,
+    category="food",
+    limit=6000
+)
+
+print("Budget created/updated with ID:", budget.id)
+
+db.close()
+
+
+
+========================================
+intent/__init__.py : python code
+========================================
+from .detector import detect_intent, Intent
+from .slots import (
+    extract_budget_slots,
+    extract_reminder_slots,
+    extract_transaction_slots,
+)
+from .state import (
+    create_initial_state,
+    update_intent,
+    update_slots,
+    is_state_complete,
+    reset_state,
+)
+
+__all__ = [
+    "detect_intent",
+    "Intent",
+    "extract_budget_slots",
+    "extract_reminder_slots",
+    "extract_transaction_slots",
+    "create_initial_state",
+    "update_intent",
+    "update_slots",
+    "is_state_complete",
+    "reset_state",
+]
+
+
+
+========================================
+intent/detector.py : python code
+========================================
+from enum import Enum
+
+
+class Intent(str, Enum):
+    UPDATE_BUDGET = "UPDATE_BUDGET"
+    CREATE_REMINDER = "CREATE_REMINDER"
+    CHECK_BALANCE = "CHECK_BALANCE"
+    ADD_EXPENSE = "ADD_EXPENSE"
+    UNKNOWN = "UNKNOWN"
+
+
+def detect_intent(text: str) -> Intent:
+    if not text:
+        return Intent.UNKNOWN
+
+    text = text.lower()
+
+    if "remind" in text or "reminder" in text:
+        return Intent.CREATE_REMINDER
+
+    if "budget" in text or "limit" in text:
+        return Intent.UPDATE_BUDGET
+
+    if "spent" in text or "expense" in text or "paid" in text:
+        return Intent.ADD_EXPENSE
+
+    if "balance" in text or "money left" in text:
+        return Intent.CHECK_BALANCE
+
+    return Intent.UNKNOWN
+
+
+
+========================================
+intent/slots.py : python code
+========================================
+import re
+from typing import Dict, Optional
+
+# -----------------------------
+# Budget Slots
+# -----------------------------
+def extract_budget_slots(text: str) -> Dict[str, Optional[str | float]]:
+    """
+    Extract slots for budget intent.
+    Example:
+    "set food budget to 6000"
+    """
+
+    text = text.lower()
+
+    category = None
+    limit = None
+
+    # Category detection
+    if "food" in text:
+        category = "food"
+    elif "travel" in text:
+        category = "travel"
+    elif "shopping" in text:
+        category = "shopping"
+    elif "rent" in text:
+        category = "rent"
+    elif "entertainment" in text:
+        category = "entertainment"
+
+    # limit / limit detection
+    limit_match = re.search(r"\b(\d{2,7})\b", text)
+    if limit_match:
+        limit = float(limit_match.group(1))
+
+    return {
+        "category": category,
+        "limit": limit
+    }
+
+
+# -----------------------------
+# Reminder Slots
+# -----------------------------
+def extract_reminder_slots(text: str) -> Dict[str, Optional[str | int]]:
+    """
+    Extract slots for reminder intent.
+    Example:
+    "remind me to pay electricity bill on the 5th"
+    """
+
+    text = text.lower()
+
+    name = None
+    day = None
+    frequency = "monthly"
+
+    # Reminder name
+    if "electricity" in text:
+        name = "electricity bill"
+    elif "credit card" in text:
+        name = "credit card bill"
+    elif "rent" in text:
+        name = "rent"
+    elif "internet" in text:
+        name = "internet bill"
+
+    # Day detection
+    day_match = re.search(r"\b(\d{1,2})\b", text)
+    if day_match:
+        day = int(day_match.group(1))
+
+    # Frequency detection
+    if "weekly" in text:
+        frequency = "weekly"
+    elif "monthly" in text:
+        frequency = "monthly"
+
+    return {
+        "name": name,
+        "day": day,
+        "frequency": frequency
+    }
+
+
+# -----------------------------
+# Expense / Transaction Slots
+# -----------------------------
+def extract_transaction_slots(text: str) -> Dict[str, Optional[str | float]]:
+    """
+    Extract slots for expense intent.
+    Example:
+    "I spent 250 on food"
+    """
+
+    text = text.lower()
+
+    category = None
+    limit = None
+
+    # Category detection
+    if "food" in text:
+        category = "food"
+    elif "travel" in text:
+        category = "travel"
+    elif "shopping" in text:
+        category = "shopping"
+    elif "rent" in text:
+        category = "rent"
+
+    # amount detection (stored as limit in Transaction model)
+    match = re.search(r"\b(\d{1,7})\b", text)
+    if match:
+        limit = float(match.group(1))
+
+    return {
+        "category": category,
+        "limit": limit,
+        "description": text
+    }
+
+
+
+========================================
+intent/state.py : python code
+========================================
+from typing import Dict
+from app.intent.detector import Intent
+
+
+def create_initial_state() -> Dict:
+    return {
+        "intent": None,
+        "slots": {},
+        "completed": False
+    }
+
+
+def update_intent(state: Dict, intent: Intent) -> Dict:
+    state["intent"] = intent
+    return state
+
+
+def update_slots(state: Dict, new_slots: Dict) -> Dict:
+    for key, value in new_slots.items():
+        if value is not None:
+            state["slots"][key] = value
+    return state
+
+
+def is_budget_state_complete(state: Dict) -> bool:
+    slots = state.get("slots", {})
+    return slots.get("category") is not None and slots.get("limit") is not None
+
+
+def is_reminder_state_complete(state: Dict) -> bool:
+    slots = state.get("slots", {})
+    return slots.get("name") is not None and slots.get("day") is not None
+
+
+def is_transaction_state_complete(state: Dict) -> bool:
+    slots = state.get("slots", {})
+    return slots.get("category") is not None and slots.get("limit") is not None
+
+
+def is_state_complete(state: Dict) -> bool:
+    intent = state.get("intent")
+
+    if intent == Intent.UPDATE_BUDGET:
+        return is_budget_state_complete(state)
+
+    if intent == Intent.CREATE_REMINDER:
+        return is_reminder_state_complete(state)
+
+    if intent == Intent.ADD_EXPENSE:
+        return is_transaction_state_complete(state)
+
+    return False
+
+
+def reset_state() -> Dict:
+    return create_initial_state()
+
+
+
+========================================
+main.py : python code
+========================================
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, UploadFile, File, Depends, Query, Body, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from typing import Optional
+from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+
+# DB
+from app.db.session import engine, SessionLocal, Base
+from app.db.models import User
+
+# Voice
+from app.voice.recorder import save_audio_file
+from app.voice.stt import transcribe_audio
+from app.voice.tts import synthesize_speech
+
+# Intent
+from app.intent.detector import detect_intent, Intent
+from app.intent.slots import (
+    extract_budget_slots,
+    extract_reminder_slots,
+    extract_transaction_slots,
+)
+
+# Services
+from app.services.budgets import set_budget, get_all_budgets
+from app.services.reminders import create_reminder, get_reminders
+from app.services.transactions import (
+    add_transaction,
+    get_transactions,
+    get_total_spent,
+)
+
+# Routers
+from app.api.routes import all_routers
+
+# -------------------------------------------------
+# LOGGING
+# -------------------------------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("voice-finance")
+
+# -------------------------------------------------
+# DB DEPENDENCY (PROD SAFE)
+# -------------------------------------------------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# -------------------------------------------------
+# APP LIFESPAN
+# -------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("🚀 Starting Voice Driven Finance System")
+
+    # Create tables
+    Base.metadata.create_all(bind=engine)
+    logger.info("✅ Database initialized")
+
+    # Seed default user
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == 1).first()
+        if not user:
+            db.add(User(id=1, email="default@voice-finance.com"))
+            db.commit()
+            logger.info("✅ Default user seeded")
+    finally:
+        db.close()
+
+    yield
+
+    logger.info("🛑 Shutting down Voice Driven Finance System")
+
+# -------------------------------------------------
+# FASTAPI APP
+# -------------------------------------------------
+app = FastAPI(
+    title="Voice Driven Finance System",
+    version="1.0.0",
+    description="Voice-powered personal finance assistant",
+    lifespan=lifespan,
+)
+
+# -------------------------------------------------
+# CORS (PROD FRIENDLY)
+# -------------------------------------------------
+# For development, allow common origins
+# In production, restrict to specific frontend URL
+# NOTE: Cannot use allow_origins=["*"] with allow_credentials=True
+# Browser security restriction - must specify exact origins
+import os
+is_dev = os.getenv("ENVIRONMENT", "development") == "development"
+
+# Common development origins
+dev_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
+    # Add more as needed
+]
+
+# Production origins - add your frontend URL here
+prod_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=dev_origins if is_dev else prod_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # Cache preflight for 1 hour
+)
+
+# -------------------------------------------------
+# CORS PREFLIGHT HANDLER
+# -------------------------------------------------
+@app.options("/{full_path:path}")
+async def options_handler(request: Request, full_path: str):
+    """Handle CORS preflight requests explicitly"""
+    origin = request.headers.get("origin")
+    # Use appropriate origin list based on environment
+    allowed_origins = dev_origins if is_dev else prod_origins
+    if origin and origin in allowed_origins:
+        return JSONResponse(
+            content={},
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
+    return JSONResponse(content={})
+
+# -------------------------------------------------
+# ROOT
+# -------------------------------------------------
+@app.get("/")
+def root():
+    return {
+        "status": "running",
+        "service": "Voice Driven Finance System",
+        "version": "1.0.0",
+    }
+
+# -------------------------------------------------
+# REQUEST MODELS
+# -------------------------------------------------
+class TextProcessRequest(BaseModel):
+    text: str
+    user_id: Optional[int] = 1
+
+
+# -------------------------------------------------
+# MAIN TEXT PIPIELINE (BACKUP)
+# -------------------------------------------------
+@app.post("/text/process")
+def process_text_command_post(
+    request: Optional[TextProcessRequest] = Body(None),
+    text: Optional[str] = Query(None),
+    user_id: int = Query(1),
+    db: Session = Depends(get_db),
+):
+    # Support both JSON body and query parameter
+    if request:
+        text = request.text
+        user_id = request.user_id or user_id
+    elif not text:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "Text parameter is required"}
+        )
+    return _process_text_command(text, user_id, db)
+
+
+@app.get("/text/process")
+def process_text_command_get(
+    text: str = Query(...),
+    user_id: int = Query(1),
+    db: Session = Depends(get_db),
+):
+    return _process_text_command(text, user_id, db)
+
+
+def _process_text_command(
+    text: str,
+    user_id: int,
+    db: Session,
+):
+
+    intent = detect_intent(text)
+
+    response = {
+        "intent": intent.value,
+        "status": "unknown",
+    }
+
+    if intent == Intent.UPDATE_BUDGET:
+        slots = extract_budget_slots(text)
+        if slots["category"] and slots["limit"]:
+            budget = set_budget(
+                db=db,
+                user_id=user_id,
+                category=slots["category"],
+                limit=slots["limit"],
+            )
+            response.update({
+                "status": "success",
+                "category": budget.category,
+                "limit": budget.limit,
+                "voice_response": f"Budget updated for {budget.category} to {budget.limit}",
+            })
+
+    elif intent == Intent.ADD_EXPENSE:
+        slots = extract_transaction_slots(text)
+        if slots["category"] and slots["limit"]:
+            txn = add_transaction(
+                db=db,
+                user_id=user_id,
+                category=slots["category"],
+                limit=slots["limit"],
+                description=slots.get("description"),
+            )
+            budget_warning = getattr(txn, "budget_warning", None)
+            voice_msg = f"Expense of {txn.limit} added"
+            if budget_warning:
+                voice_msg += f". {budget_warning}"
+            response.update({
+                "status": "success",
+                "category": txn.category,
+                "limit": txn.limit,
+                "budget_warning": budget_warning,
+                "voice_response": voice_msg,
+            })
+
+    else:
+        response.update({
+            "status": "error",
+            "voice_response": "Sorry, I did not understand that",
+        })
+
+    return response
+
+
+# -------------------------------------------------
+# MAIN VOICE PIPELI NE
+# -------------------------------------------------
+@app.post("/voice/process")
+async def process_voice_command(
+    file: UploadFile = File(...),
+    user_id: int = 1,
+    db: Session = Depends(get_db),
+):
+    try:
+        # 1. Save audio
+        audio_path = await save_audio_file(file)
+        logger.info(f"🎙 Audio saved: {audio_path}")
+
+        # 2. STT
+        text = transcribe_audio(audio_path)
+        logger.info(f"📝 Transcribed: {text}")
+
+        # 3. Intent
+        intent = detect_intent(text)
+        logger.info(f"🎯 Intent: {intent.value}")
+
+        response = {
+            "transcribed_text": text,
+            "intent": intent.value,
+            "status": "unknown",
+        }
+
+        # 4. Intent routing
+        if intent == Intent.UPDATE_BUDGET:
+            slots = extract_budget_slots(text)
+            if slots["category"] and slots["limit"]:
+                budget = set_budget(
+                    db=db,
+                    user_id=user_id,
+                    category=slots["category"],
+                    limit=slots["limit"],
+                )
+                response.update({
+                    "status": "success",
+                    "action": "Budget updated",
+                    "category": budget.category,
+                    "limit": budget.limit,
+                })
+
+        elif intent == Intent.ADD_EXPENSE:
+            slots = extract_transaction_slots(text)
+            if slots["category"] and slots["limit"]:
+                txn = add_transaction(
+                    db=db,
+                    user_id=user_id,
+                    category=slots["category"],
+                    limit=slots["limit"],
+                    description=slots.get("description"),
+                )
+                response.update({
+                    "status": "success",
+                    "action": "Expense added",
+                    "category": txn.category,
+                    "limit": txn.limit,
+                    "budget_warning": getattr(txn, "budget_warning", None),
+                })
+
+        elif intent == Intent.CREATE_REMINDER:
+            slots = extract_reminder_slots(text)
+            if slots["name"] and slots["day"]:
+                reminder = create_reminder(
+                    db=db,
+                    user_id=user_id,
+                    name=slots["name"],
+                    day=slots["day"],
+                    frequency=slots.get("frequency", "monthly"),
+                )
+                response.update({
+                    "status": "success",
+                    "action": "Reminder created",
+                    "name": reminder.name,
+                })
+
+        elif intent == Intent.CHECK_BALANCE:
+            budgets = get_all_budgets(db=db, user_id=user_id)
+            total = get_total_spent(db=db, user_id=user_id)
+            
+            # Calculate balance per category (cascading operation)
+            balance_info = []
+            for budget in budgets:
+                category_spent = get_total_spent(db=db, user_id=user_id, category=budget.category)
+                remaining = budget.limit - category_spent
+                balance_info.append({
+                    "category": budget.category,
+                    "limit": budget.limit,
+                    "spent": category_spent,
+                    "remaining": remaining
+                })
+            
+            response.update({
+                "status": "success",
+                "action": "Balance checked",
+                "total_spent": total,
+                "budgets": balance_info,
+            })
+
+        else:
+            response.update({
+                "status": "error",
+                "message": "Could not understand command",
+            })
+
+        # 5. TTS message
+        response["voice_response"] = generate_tts_response(response)
+
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.exception("❌ Voice processing failed")
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)},
+        )
+
+# -------------------------------------------------
+# ANALYTICS
+# -------------------------------------------------
+@app.get("/analytics/summary")
+def analytics_summary(
+    user_id: int = 1,
+    db: Session = Depends(get_db),
+):
+    return {
+        "user_id": user_id,
+        "total_spent": get_total_spent(db, user_id),
+        "budgets": [
+            {"category": b.category, "limit": b.limit}
+            for b in get_all_budgets(db, user_id)
+        ],
+        "reminders": len(get_reminders(db, user_id)),
+    }
+
+# -------------------------------------------------
+# TTS RESPONSE HELPER
+# -------------------------------------------------
+def generate_tts_response(data: dict) -> str:
+    if data.get("status") != "success":
+        return "Sorry, I could not process your request."
+
+    action = data.get("action", "")
+    if action == "Budget updated":
+        return f"Budget set for {data['category']} at {data['limit']} rupees."
+    if action == "Expense added":
+        msg = f"Expense of {data['limit']} rupees recorded."
+        if data.get("budget_warning"):
+            msg += f" {data['budget_warning']}"
+        return msg
+    if action == "Balance checked":
+        msg = f"You have spent {data['total_spent']} rupees in total."
+        if data.get("budgets"):
+            for budget_info in data["budgets"]:
+                remaining = budget_info.get("remaining", budget_info['limit'] - budget_info['spent'])
+                msg += f" {budget_info['category']}: {budget_info['spent']:.2f} spent out of {budget_info['limit']:.2f}, {remaining:.2f} remaining."
+        return msg
+
+    return "Action completed successfully."
+
+# -------------------------------------------------
+# ROUTERS
+# -------------------------------------------------
+for router in all_routers:
+    app.include_router(router)
+
+
+
+========================================
+main1.py : python code
+========================================
+from fastapi import FastAPI
+from app.api.routes import all_routers
+
+app = FastAPI(
+    title="Voice Driven Finance System",
+    version="1.0.0"
+)
+
+@app.get("/")
+def root():
+    return {"message": "Voice Driven Finance System API is running"}
+
+for router in all_routers:
+    app.include_router(router)
+
+
+
+========================================
+services/__init__.py : python code
+========================================
+from .budgets import (
+    set_budget,
+    get_budget,
+    get_all_budgets,
+    delete_budget,
+)
+
+__all__ = [
+    "set_budget",
+    "get_budget",
+    "get_all_budgets",
+    "delete_budget",
+]
+
+
+
+========================================
+services/budgets.py : python code
+========================================
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from typing import Optional
+
+from app.db.models import Budget
+from app.audit.logger import log_action
+
+
+# -----------------------------
+# Create or Update Budget
+# -----------------------------
+def set_budget(
+    db: Session,
+    user_id: int,
+    category: str,
+    limit: float
+) -> Budget:
+    """
+    Create a new budget or update an existing one for a category.
+    """
+
+    # Validation (service-level safety)
+    if limit <= 0:
+        raise ValueError("Budget limit must be greater than zero")
+
+    existing_budget = (
+        db.query(Budget)
+        .filter(Budget.user_id == user_id, Budget.category == category)
+        .first()
+    )
+
+    if existing_budget:
+        existing_budget.limit = limit
+        action = "UPDATE_BUDGET"
+        budget = existing_budget
+    else:
+        budget = Budget(
+            user_id=user_id,
+            category=category,
+            limit=limit
+        )
+        db.add(budget)
+        action = "CREATE_BUDGET"
+
+    try:
+        db.commit()
+        db.refresh(budget)
+    except IntegrityError:
+        db.rollback()
+        raise RuntimeError("Failed to set budget")
+
+    # Audit log
+    log_action(
+        db=db,
+        user_id=user_id,
+        action=action,
+        details=f"{category} budget set to {limit}"
+    )
+
+    return budget
+
+
+# -----------------------------
+# Get Budget for Category
+# -----------------------------
+def get_budget(
+    db: Session,
+    user_id: int,
+    category: str
+) -> Optional[Budget]:
+    """
+    Fetch budget for a specific category.
+    """
+
+    return (
+        db.query(Budget)
+        .filter(Budget.user_id == user_id, Budget.category == category)
+        .first()
+    )
+
+
+# -----------------------------
+# Get All Budgets for User
+# -----------------------------
+def get_all_budgets(
+    db: Session,
+    user_id: int
+) -> list[Budget]:
+    """
+    Fetch all budgets for a user.
+    """
+
+    return (
+        db.query(Budget)
+        .filter(Budget.user_id == user_id)
+        .all()
+    )
+
+
+# -----------------------------
+# Delete Budget
+# -----------------------------
+def delete_budget(
+    db: Session,
+    user_id: int,
+    category: str
+) -> bool:
+    """
+    Delete a budget for a category.
+    """
+
+    budget = (
+        db.query(Budget)
+        .filter(Budget.user_id == user_id, Budget.category == category)
+        .first()
+    )
+
+    if not budget:
+        return False
+
+    db.delete(budget)
+    db.commit()
+
+    # Audit log
+    log_action(
+        db=db,
+        user_id=user_id,
+        action="DELETE_BUDGET",
+        details=f"{category} budget deleted"
+    )
+
+    return True
+
+
+
+========================================
+services/reminders.py : python code
+========================================
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from typing import Optional, List
+
+from app.db.models import Reminder
+from app.audit.logger import log_action
+
+
+# -----------------------------
+# Create Reminder
+# -----------------------------
+def create_reminder(
+    db: Session,
+    user_id: int,
+    name: str,
+    day: int,
+    frequency: str = "monthly"
+) -> Reminder:
+    """
+    Create a new reminder.
+    """
+
+    # Basic validation (service-level safety)
+    if day < 1 or day > 28:
+        raise ValueError("Day must be between 1 and 28")
+
+    reminder = Reminder(
+        user_id=user_id,
+        name=name,
+        day=day,
+        frequency=frequency
+    )
+
+    try:
+        db.add(reminder)
+        db.commit()
+        db.refresh(reminder)
+    except IntegrityError:
+        db.rollback()
+        raise RuntimeError("Failed to create reminder")
+
+    log_action(
+        db=db,
+        user_id=user_id,
+        action="CREATE_REMINDER",
+        details=f"{name} on day {day} ({frequency})"
+    )
+
+    return reminder
+
+
+# -----------------------------
+# Get All Reminders for User
+# -----------------------------
+def get_reminders(
+    db: Session,
+    user_id: int
+) -> List[Reminder]:
+    """
+    Fetch all reminders for a user.
+    """
+    return (
+        db.query(Reminder)
+        .filter(Reminder.user_id == user_id)
+        .all()
+    )
+
+
+# -----------------------------
+# Get Single Reminder
+# -----------------------------
+def get_reminder_by_id(
+    db: Session,
+    reminder_id: int,
+    user_id: int
+) -> Optional[Reminder]:
+    """
+    Fetch a specific reminder by ID.
+    """
+    return (
+        db.query(Reminder)
+        .filter(
+            Reminder.id == reminder_id,
+            Reminder.user_id == user_id
+        )
+        .first()
+    )
+
+
+# -----------------------------
+# Update Reminder
+# -----------------------------
+def update_reminder(
+    db: Session,
+    reminder_id: int,
+    user_id: int,
+    day: Optional[int] = None,
+    frequency: Optional[str] = None
+) -> Reminder:
+    """
+    Update an existing reminder.
+    """
+
+    reminder = get_reminder_by_id(db, reminder_id, user_id)
+
+    if not reminder:
+        raise ValueError("Reminder not found")
+
+    if day is not None:
+        if day < 1 or day > 28:
+            raise ValueError("Day must be between 1 and 28")
+        reminder.day = day
+
+    if frequency is not None:
+        reminder.frequency = frequency
+
+    db.commit()
+    db.refresh(reminder)
+
+    log_action(
+        db=db,
+        user_id=user_id,
+        action="UPDATE_REMINDER",
+        details=f"Reminder {reminder_id} updated"
+    )
+
+    return reminder
+
+
+# -----------------------------
+# Delete Reminder
+# -----------------------------
+def delete_reminder(
+    db: Session,
+    reminder_id: int,
+    user_id: int
+) -> bool:
+    """
+    Delete a reminder.
+    """
+
+    reminder = get_reminder_by_id(db, reminder_id, user_id)
+
+    if not reminder:
+        return False
+
+    db.delete(reminder)
+    db.commit()
+
+    log_action(
+        db=db,
+        user_id=user_id,
+        action="DELETE_REMINDER",
+        details=f"Reminder {reminder_id} deleted"
+    )
+
+    return True
+
+
+
+========================================
+services/transactions.py : python code
+========================================
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from typing import List, Optional
+
+from app.db.models import Transaction
+from app.audit.logger import log_action
+from app.services.budgets import get_budget
+
+
+# -----------------------------
+# Add Transaction / Expense
+# -----------------------------
+def add_transaction(
+    db: Session,
+    user_id: int,
+    category: str,
+    limit: float,
+    description: Optional[str] = None
+) -> Transaction:
+    """
+    Add a new transaction (expense).
+    Performs cascading operations:
+    - Checks if budget exists for category
+    - Calculates total spent including new transaction
+    - Validates against budget limit
+    """
+
+    # Service-level validation
+    if limit <= 0:
+        raise ValueError("Transaction amount must be positive")
+
+    # Check if budget exists for this category (cascading operation)
+    budget = get_budget(db=db, user_id=user_id, category=category)
+    
+    # Calculate total spent including this new transaction
+    total_spent = get_total_spent(db=db, user_id=user_id, category=category)
+    new_total = total_spent + limit
+    
+    # Budget validation and warning
+    budget_warning = None
+    if budget:
+        if new_total > budget.limit:
+            budget_warning = f"WARNING: Budget exceeded! Limit: {budget.limit}, Total spent: {new_total:.2f}"
+        elif new_total > budget.limit * 0.9:
+            budget_warning = f"WARNING: Approaching budget limit. Limit: {budget.limit}, Total spent: {new_total:.2f}"
+
+    transaction = Transaction(
+        user_id=user_id,
+        category=category,
+        limit=limit,
+        description=description
+    )
+
+    try:
+        db.add(transaction)
+        db.commit()
+        db.refresh(transaction)
+    except IntegrityError:
+        db.rollback()
+        raise RuntimeError("Failed to add transaction")
+
+    # Audit log with budget status
+    budget_status = f" (Budget: {budget.limit}, Total: {new_total:.2f})" if budget else " (No budget set)"
+    log_action(
+        db=db,
+        user_id=user_id,
+        action="ADD_TRANSACTION",
+        details=f"{category} → {limit}{budget_status}"
+    )
+    
+    # Store budget warning as attribute for response handling
+    if budget_warning:
+        transaction.budget_warning = budget_warning
+
+    return transaction
+
+
+# -----------------------------
+# Get All Transactions
+# -----------------------------
+def get_transactions(
+    db: Session,
+    user_id: int,
+    limit: int = 50
+) -> List[Transaction]:
+    """
+    Fetch recent transactions for a user.
+    """
+
+    return (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user_id)
+        .order_by(Transaction.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+# -----------------------------
+# Get Transactions by Category
+# -----------------------------
+def get_transactions_by_category(
+    db: Session,
+    user_id: int,
+    category: str
+) -> List[Transaction]:
+    """
+    Fetch transactions for a specific category.
+    """
+
+    return (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.category == category
+        )
+        .order_by(Transaction.created_at.desc())
+        .all()
+    )
+
+
+# -----------------------------
+# Get Total Spent (Optional Helper)
+# -----------------------------
+def get_total_spent(
+    db: Session,
+    user_id: int,
+    category: Optional[str] = None
+) -> float:
+    """
+    Calculate total spent by user.
+    Optionally filtered by category.
+    """
+
+    query = db.query(Transaction).filter(Transaction.user_id == user_id)
+
+    if category:
+        query = query.filter(Transaction.category == category)
+
+    return sum(t.limit for t in query.all())
+
+
+# -----------------------------
+# Delete Transaction (Optional)
+# -----------------------------
+def delete_transaction(
+    db: Session,
+    transaction_id: int,
+    user_id: int
+) -> bool:
+    """
+    Delete a transaction.
+    """
+
+    transaction = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id == transaction_id,
+            Transaction.user_id == user_id
+        )
+        .first()
+    )
+
+    if not transaction:
+        return False
+
+    db.delete(transaction)
+    db.commit()
+
+    log_action(
+        db=db,
+        user_id=user_id,
+        action="DELETE_TRANSACTION",
+        details=f"Transaction {transaction_id} deleted"
+    )
+
+    return True
+
+
+
+========================================
+utils/__init__.py : python code
+========================================
+from .validation import (
+    validate_budget_slots,
+)
+
+__all__ = [
+    "validate_budget_slots",
+]
+
+
+
+========================================
+utils/validation.py : python code
+========================================
+def validate_budget_slots(slots: dict):
+    if not slots.get("category"):
+        raise ValueError("Category required")
+
+    if not slots.get("limit"):
+        raise ValueError("Limit required")
+
+    if slots["limit"] <= 0:
+        raise ValueError("Limit must be positive")
+
+
+
+========================================
+voice/audio_preprocess.py : python code
+========================================
+import subprocess
+import os
+
+def preprocess_audio(input_path: str) -> str:
+    """
+    Converts audio to:
+    - mono
+    - 16kHz
+    - normalized loudness
+    """
+    output_path = input_path.replace(".wav", "_clean.wav")
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", input_path,
+        "-ac", "1",          # mono
+        "-ar", "16000",      # 16kHz (Whisper expects this)
+        "-af", "loudnorm",   # normalize volume
+        output_path
+    ]
+
+    subprocess.run(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    return output_path
+
+
+
+========================================
+voice/recorder.py : python code
+========================================
+import os
+from fastapi import UploadFile
+from datetime import datetime
+
+AUDIO_DIR = "audio_inputs"
+
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+async def save_audio_file(audio: UploadFile) -> str:
+    """
+    Saves uploaded audio file and returns file path
+    """
+    if audio.content_type not in ["audio/wav", "audio/x-wav"]:
+        raise ValueError("Invalid audio format. Only WAV supported.")
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"voice_{timestamp}.wav"
+    file_path = os.path.join(AUDIO_DIR, filename)
+
+    with open(file_path, "wb") as f:
+        content = await audio.read()
+        f.write(content)
+
+    return file_path
+
+
+
+========================================
+voice/stt.py : python code
+========================================
+import whisper
+import os
+from app.voice.audio_preprocess import preprocess_audio
+
+model = whisper.load_model("small")  # small > base for accents
+
+
+def transcribe_audio(audio_path: str) -> str:
+    if not audio_path or not os.path.exists(audio_path):
+        raise ValueError("Audio file does not exist")
+
+    clean_audio = preprocess_audio(audio_path)
+
+    result = model.transcribe(
+        clean_audio,
+        language="en",
+        fp16=False,                 # REQUIRED on Windows
+        temperature=0.0,            # no randomness
+        condition_on_previous_text=False,
+        initial_prompt=(
+            "The user gives short finance commands like "
+            "'set food budget to 6000', "
+            "'add expense 250 food', "
+            "'check balance'."
+        ),
+        no_speech_threshold=0.25,
+        logprob_threshold=-1.0,
+        compression_ratio_threshold=2.2
+    )
+
+    text = result.get("text", "").strip().lower()
+    return text
+
+
+
+========================================
+voice/test_stt.py : python code
+========================================
+from app.voice.stt import speech_to_text
+
+text = speech_to_text("audio_inputs/voice_20240108_123456.wav")
+print(text)
+
+
+
+========================================
+voice/test_tts.py : python code
+========================================
+from app.voice.tts import speak
+
+
+def test_tts_basic():
+    """
+    Simple TTS sanity test.
+    """
+    result = {
+        "category": "food",
+        "limit": 600
+    }
+
+    text = f"Your {result['category']} budget is set to {result['limit']} rupees"
+    
+
+    audio_path = speak(text)
+
+    print("TTS generated at:", audio_path)
+
+
+if __name__ == "__main__":
+    test_tts_basic()
+
+
+
+========================================
+voice/tts.py : python code
+========================================
+from gtts import gTTS
+import os
+import uuid
+import subprocess
+
+TTS_DIR = "audio_outputs"
+os.makedirs(TTS_DIR, exist_ok=True)
+
+
+def synthesize_speech(text: str) -> str:
+    """
+    Converts text to speech using Google TTS.
+    Saves and plays an MP3 file on Windows.
+    Returns the file path.
+    """
+
+    if not text:
+        raise ValueError("Text is required for TTS")
+
+    filename = f"tts_{uuid.uuid4().hex}.mp3"
+    file_path = os.path.join(TTS_DIR, filename)
+
+    tts = gTTS(text=text, lang="en")
+    tts.save(file_path)
+
+    # Play audio on Windows (non-blocking)
+    try:
+        subprocess.Popen(
+            ["powershell", "-c", f'Start-Process "{file_path}"'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        pass  # Audio still saved even if playback fails
+
+    return file_path
+    
+
+
