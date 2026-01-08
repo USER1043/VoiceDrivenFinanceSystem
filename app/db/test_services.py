@@ -1,5 +1,5 @@
 from app.db.session import SessionLocal
-from app.services.budgets import    set_budget
+from app.services.budgets import set_budget
 
 db = SessionLocal()
 
