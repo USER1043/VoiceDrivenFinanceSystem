@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Depends, Query, Body, Request
+from fastapi import FastAPI, UploadFile, File, Depends, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ from app.db.models import User
 from app.voice.recorder import save_audio_file
 from app.voice.stt import transcribe_audio
 
-# Intent + slots (UNCHANGED)
+# Intent + slots
 from app.intent.detector import detect_intent, Intent
 from app.intent.slots import (
     extract_budget_slots,
@@ -27,7 +27,7 @@ from app.intent.slots import (
     extract_transaction_slots,
 )
 
-# Services (UNCHANGED)
+# Services
 from app.services.budgets import set_budget, get_all_budgets
 from app.services.reminders import create_reminder, get_reminders
 from app.services.transactions import add_transaction, get_total_spent
@@ -63,8 +63,7 @@ async def lifespan(app: FastAPI):
 
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == 1).first()
-        if not user:
+        if not db.query(User).filter(User.id == 1).first():
             db.add(User(id=1, email="default@voice-finance.com"))
             db.commit()
             logger.info("✅ Default user seeded")
@@ -88,6 +87,7 @@ app = FastAPI(
 # CORS
 # -------------------------------------------------
 import os
+
 is_dev = os.getenv("ENVIRONMENT", "development") == "development"
 
 dev_origins = [
@@ -124,7 +124,7 @@ class TextProcessRequest(BaseModel):
     user_id: Optional[int] = 1
 
 # -------------------------------------------------
-# TEXT PIPELINE (AI + RULES)
+# TEXT PIPELINE
 # -------------------------------------------------
 @app.post("/text/process")
 def process_text_post(
@@ -152,39 +152,43 @@ def process_text_get(
 
 
 def _process_text_command(text: str, user_id: int, db: Session):
-    # 🧠 AI NORMALIZATION
     normalized = normalize_command(text)
     logger.info(f"🧠 AI normalized: '{text}' → '{normalized}'")
 
     intent = detect_intent(normalized)
-
     response = {"intent": intent.value, "status": "unknown"}
 
+    # -------------------------
+    # UPDATE BUDGET
+    # -------------------------
     if intent == Intent.UPDATE_BUDGET:
         slots = extract_budget_slots(normalized)
-        if slots["category"] and slots["limit"]:
-            budget = set_budget(db, user_id, slots["category"], slots["limit"])
+        if slots["category"] and slots["amount"]:
+            budget = set_budget(db, user_id, slots["category"], slots["amount"])
             response.update({
                 "status": "success",
                 "category": budget.category,
-                "limit": budget.limit,
+                "amount": budget.amount,
                 "voice_response": f"Budget updated for {budget.category}",
             })
 
+    # -------------------------
+    # ADD EXPENSE
+    # -------------------------
     elif intent == Intent.ADD_EXPENSE:
         slots = extract_transaction_slots(normalized)
-        if slots["category"] and slots["limit"]:
+        if slots["category"] and slots["amount"]:
             txn = add_transaction(
-                db,
-                user_id,
-                slots["category"],
-                slots["limit"],
+                db=db,
+                user_id=user_id,
+                category=slots["category"],
+                amount=slots["amount"],   # ✅ FIXED
                 description=normalized,
             )
             response.update({
                 "status": "success",
                 "category": txn.category,
-                "limit": txn.limit,
+                "amount": txn.amount,     # ✅ FIXED
                 "budget_warning": getattr(txn, "budget_warning", None),
                 "voice_response": "Expense recorded",
             })
@@ -198,7 +202,7 @@ def _process_text_command(text: str, user_id: int, db: Session):
     return response
 
 # -------------------------------------------------
-# VOICE PIPELINE (STT → AI → RULES)
+# VOICE PIPELINE
 # -------------------------------------------------
 @app.post("/voice/process")
 async def process_voice(
@@ -210,7 +214,6 @@ async def process_voice(
         audio_path = await save_audio_file(file)
         text = transcribe_audio(audio_path)
 
-        # 🧠 AI NORMALIZATION
         normalized = normalize_command(text)
         logger.info(f"🧠 AI normalized (voice): '{text}' → '{normalized}'")
 
@@ -225,30 +228,30 @@ async def process_voice(
 
         if intent == Intent.UPDATE_BUDGET:
             slots = extract_budget_slots(normalized)
-            if slots["category"] and slots["limit"]:
-                budget = set_budget(db, user_id, slots["category"], slots["limit"])
+            if slots["category"] and slots["amount"]:
+                budget = set_budget(db, user_id, slots["category"], slots["amount"])
                 response.update({
                     "status": "success",
                     "action": "Budget updated",
                     "category": budget.category,
-                    "limit": budget.limit,
+                    "amount": budget.amount,
                 })
 
         elif intent == Intent.ADD_EXPENSE:
             slots = extract_transaction_slots(normalized)
-            if slots["category"] and slots["limit"]:
+            if slots["category"] and slots["amount"]:
                 txn = add_transaction(
-                    db,
-                    user_id,
-                    slots["category"],
-                    slots["limit"],
+                    db=db,
+                    user_id=user_id,
+                    category=slots["category"],
+                    amount=slots["amount"],   # ✅ FIXED
                     description=normalized,
                 )
                 response.update({
                     "status": "success",
                     "action": "Expense added",
                     "category": txn.category,
-                    "limit": txn.limit,
+                    "amount": txn.amount,     # ✅ FIXED
                     "budget_warning": getattr(txn, "budget_warning", None),
                 })
 
@@ -279,9 +282,9 @@ async def process_voice(
                 "budgets": [
                     {
                         "category": b.category,
-                        "limit": b.limit,
+                        "amount": b.amount,
                         "spent": get_total_spent(db, user_id, b.category),
-                        "remaining": b.limit - get_total_spent(db, user_id, b.category),
+                        "remaining": b.amount - get_total_spent(db, user_id, b.category),
                     }
                     for b in budgets
                 ],
@@ -305,7 +308,7 @@ def analytics(user_id: int = 1, db: Session = Depends(get_db)):
         "user_id": user_id,
         "total_spent": get_total_spent(db, user_id),
         "budgets": [
-            {"category": b.category, "limit": b.limit}
+            {"category": b.category, "amount": b.amount}
             for b in get_all_budgets(db, user_id)
         ],
         "reminders": len(get_reminders(db, user_id)),

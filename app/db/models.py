@@ -25,6 +25,9 @@ class User(Base):
 # -----------------------------
 # Transaction Model
 # -----------------------------
+# -----------------------------
+# Transaction Model ✅ FIX
+# -----------------------------
 class Transaction(Base):
     __tablename__ = "transactions"
 
@@ -32,10 +35,11 @@ class Transaction(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     category = Column(String, nullable=False)
-    limit = Column(Float, nullable=False)
+    amount = Column(Float, nullable=False)   # ✅ was "limit"
     description = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 
 
 # -----------------------------
