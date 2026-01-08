@@ -28,10 +28,10 @@ def extract_budget_slots(text: str) -> Dict[str, Optional[str | float]]:
     elif "entertainment" in text:
         category = "entertainment"
 
-    # Amount / limit detection
-    amount_match = re.search(r"\b(\d{2,7})\b", text)
-    if amount_match:
-        limit = float(amount_match.group(1))
+    # limit / limit detection
+    limit_match = re.search(r"\b(\d{2,7})\b", text)
+    if limit_match:
+        limit = float(limit_match.group(1))
 
     return {
         "category": category,
@@ -96,7 +96,7 @@ def extract_transaction_slots(text: str) -> Dict[str, Optional[str | float]]:
     text = text.lower()
 
     category = None
-    amount = None
+    limit = None
 
     # Category detection
     if "food" in text:
@@ -108,13 +108,13 @@ def extract_transaction_slots(text: str) -> Dict[str, Optional[str | float]]:
     elif "rent" in text:
         category = "rent"
 
-    # Amount detection
-    amount_match = re.search(r"\b(\d{1,7})\b", text)
-    if amount_match:
-        amount = float(amount_match.group(1))
+    # limit detection
+    limit_match = re.search(r"\b(\d{1,7})\b", text)
+    if limit_match:
+        limit = float(limit_match.group(1))
 
     return {
         "category": category,
-        "amount": amount,
+        "limit": limit,
         "description": text
     }

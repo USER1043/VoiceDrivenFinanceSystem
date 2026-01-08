@@ -36,9 +36,9 @@ def handle_voice(
     if intent == Intent.UPDATE_BUDGET:
         slots = extract_budget_slots(text)
         
-        if not slots["category"] or not slots["amount"]:
+        if not slots["category"] or not slots["limit"]:
             return {
-                "message": "Could not extract budget information. Please specify category and amount.",
+                "message": "Could not extract budget information. Please specify category and limit.",
                 "intent": intent.value
             }
 
@@ -46,7 +46,7 @@ def handle_voice(
             db=db,
             user_id=1,
             category=slots["category"],
-            limit=slots["amount"]
+            limit=slots["limit"]
         )
 
         return {
@@ -59,9 +59,9 @@ def handle_voice(
     elif intent == Intent.ADD_EXPENSE:
         slots = extract_transaction_slots(text)
         
-        if not slots["category"] or not slots["amount"]:
+        if not slots["category"] or not slots["limit"]:
             return {
-                "message": "Could not extract transaction information. Please specify category and amount.",
+                "message": "Could not extract transaction information. Please specify category and limit.",
                 "intent": intent.value
             }
 
@@ -69,7 +69,7 @@ def handle_voice(
             db=db,
             user_id=1,
             category=slots["category"],
-            amount=slots["amount"],
+            limit=slots["limit"],
             description=slots.get("description")
         )
 
@@ -77,7 +77,7 @@ def handle_voice(
             "message": "Expense added successfully",
             "intent": intent.value,
             "category": transaction.category,
-            "amount": transaction.amount,
+            "limit": transaction.limit,
             "transaction_id": transaction.id
         }
 
@@ -119,7 +119,7 @@ def handle_voice(
             
             balance_info.append({
                 "category": budget.category,
-                "amount": budget.limit,
+                "limit": budget.limit,
                 "spent": total_spent,
                 "remaining": remaining
             })

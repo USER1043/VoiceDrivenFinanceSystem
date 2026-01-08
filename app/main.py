@@ -114,7 +114,64 @@ def root():
     }
 
 # -------------------------------------------------
-# MAIN VOICE PIPELINE
+# MAIN TEXT PIPIELINE (BACKUP)
+# -------------------------------------------------
+@app.post("/text/process")
+def process_text_command(
+    text: str,
+    user_id: int = 1,
+    db: Session = Depends(get_db),
+):
+    intent = detect_intent(text)
+
+    response = {
+        "intent": intent.value,
+        "status": "unknown",
+    }
+
+    if intent == Intent.UPDATE_BUDGET:
+        slots = extract_budget_slots(text)
+        if slots["category"] and slots["limit"]:
+            budget = set_budget(
+                db=db,
+                user_id=user_id,
+                category=slots["category"],
+                limit=slots["limit"],
+            )
+            response.update({
+                "status": "success",
+                "category": budget.category,
+                "limit": budget.limit,
+                "voice_response": f"Budget updated for {budget.category} to {budget.limit}",
+            })
+
+    elif intent == Intent.ADD_EXPENSE:
+        slots = extract_transaction_slots(text)
+        if slots["category"] and slots["limit"]:
+            txn = add_transaction(
+                db=db,
+                user_id=user_id,
+                category=slots["category"],
+                limit=slots["limit"],
+            )
+            response.update({
+                "status": "success",
+                "category": txn.category,
+                "limit": txn.limit,
+                "voice_response": f"Expense of {txn.limit} added",
+            })
+
+    else:
+        response.update({
+            "status": "error",
+            "voice_response": "Sorry, I did not understand that",
+        })
+
+    return response
+
+
+# -------------------------------------------------
+# MAIN VOICE PIPELI NE
 # -------------------------------------------------
 @app.post("/voice/process")
 async def process_voice_command(
@@ -144,35 +201,35 @@ async def process_voice_command(
         # 4. Intent routing
         if intent == Intent.UPDATE_BUDGET:
             slots = extract_budget_slots(text)
-            if slots["category"] and slots["amount"]:
+            if slots["category"] and slots["limit"]:
                 budget = set_budget(
                     db=db,
                     user_id=user_id,
                     category=slots["category"],
-                    limit=slots["amount"],
+                    limit=slots["limit"],
                 )
                 response.update({
                     "status": "success",
                     "action": "Budget updated",
                     "category": budget.category,
-                    "amount": budget.limit,
+                    "limit": budget.limit,
                 })
 
         elif intent == Intent.ADD_EXPENSE:
             slots = extract_transaction_slots(text)
-            if slots["category"] and slots["amount"]:
+            if slots["category"] and slots["limit"]:
                 txn = add_transaction(
                     db=db,
                     user_id=user_id,
                     category=slots["category"],
-                    amount=slots["amount"],
+                    limit=slots["limit"],
                     description=slots.get("description"),
                 )
                 response.update({
                     "status": "success",
                     "action": "Expense added",
                     "category": txn.category,
-                    "amount": txn.amount,
+                    "limit": txn.limit,
                 })
 
         elif intent == Intent.CREATE_REMINDER:
@@ -229,7 +286,7 @@ def analytics_summary(
         "user_id": user_id,
         "total_spent": get_total_spent(db, user_id),
         "budgets": [
-            {"category": b.category, "amount": b.limit}
+            {"category": b.category, "limit": b.limit}
             for b in get_all_budgets(db, user_id)
         ],
         "reminders": len(get_reminders(db, user_id)),
@@ -244,9 +301,9 @@ def generate_tts_response(data: dict) -> str:
 
     action = data.get("action", "")
     if action == "Budget updated":
-        return f"Budget set for {data['category']} at {data['amount']} rupees."
+        return f"Budget set for {data['category']} at {data['limit']} rupees."
     if action == "Expense added":
-        return f"Expense of {data['amount']} rupees recorded."
+        return f"Expense of {data['limit']} rupees recorded."
     if action == "Balance checked":
         return f"You have spent {data['total_spent']} rupees in total."
 

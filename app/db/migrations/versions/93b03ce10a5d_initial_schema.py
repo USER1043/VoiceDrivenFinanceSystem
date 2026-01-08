@@ -62,7 +62,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('category', sa.String(), nullable=False),
-    sa.Column('amount', sa.Float(), nullable=False),
+    sa.Column('limit', sa.Float(), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
