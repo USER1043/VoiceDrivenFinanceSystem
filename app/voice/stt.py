@@ -5,7 +5,7 @@ from app.voice.audio_preprocess import preprocess_audio
 model = whisper.load_model("small")  # small > base for accents
 
 
-def speech_to_text(audio_path: str) -> str:
+def transcribe_audio(audio_path: str) -> str:
     if not audio_path or not os.path.exists(audio_path):
         raise ValueError("Audio file does not exist")
 

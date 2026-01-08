@@ -7,7 +7,7 @@ TTS_DIR = "audio_outputs"
 os.makedirs(TTS_DIR, exist_ok=True)
 
 
-def speak(text: str) -> str:
+def synthesize_speech(text: str) -> str:
     """
     Converts text to speech using Google TTS.
     Saves and plays an MP3 file on Windows.
