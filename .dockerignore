@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.env
+.git
+.gitignore
+tests/
+node_modules/
