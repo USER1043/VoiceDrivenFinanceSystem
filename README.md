@@ -49,16 +49,69 @@ Supported intents:
 
 ---
 
-## 🏗️ System Architecture
-Frontend (React + Web APIs)
-├─ UI (Chat‑style interface)
-├─ Speech Recognition (STT)
-├─ Speech Synthesis (TTS)
-└─ Axios API Client
-↓
-Backend (FastAPI)
-├─ Intent Detection
-├─ Slot Extraction
-├─ Business Logic
-├─ Database (SQLAlchemy)
-└─ Analytics
+## Tech Stack
+
+### Frontend
+- React (Vite)
+- JavaScript (ES6+)
+- CSS (custom glassmorphism UI)
+- Browser Audio APIs (WAV-ready recording)
+- Axios for API communication
+
+### Backend (Integrated / Planned)
+- FastAPI
+- Whisper (Speech-to-Text)
+- Intent classification (rule-based / LLM-assisted)
+- PostgreSQL / Redis (optional)
+
+---
+
+## Project Structure
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── Header.jsx
+│   │   ├── VoiceInput.jsx
+│   │   └── ResultCard.jsx
+│   │
+│   ├── pages/
+│   │   └── Dashboard.jsx
+│   │
+│   ├── services/
+│   │   └── api.js
+│   │
+│   ├── utils/
+│   │   └── wavEncoder.js
+│   │
+│   ├── App.jsx
+│   ├── main.jsx
+│   └── index.css
+
+backend/
+├── app/
+│   ├── main.py                 # FastAPI app entry point
+│   │
+│   ├── core/
+│   │   ├── config.py           # App config, env vars
+│   │   ├── security.py         # Auth, API keys, guards (future)
+│   │   └── logging.py          # Audit & request logging
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── voice.py            # Voice & text endpoints
+│   │   └── health.py           # Health / test endpoints
+│   │
+│   ├── voice/
+│   │   ├── __init__.py
+│   │   ├── recorder.py         # Save uploaded audio (.wav)
+│   │   ├── stt.py              # Speech-to-text (Whisper)
+│   │   └── tts.py              # Text-to-speech (optional)
+│   │
+│   ├── intent/
+│   │   ├── __init__.py
+│   │   ├── classifier.py       # Intent detection logic
+│   │   └── rules.py            # Rule-based fallback
+│   │
+│   ├── services/
+│   │   ├──
+
