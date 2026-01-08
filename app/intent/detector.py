@@ -1,0 +1,39 @@
+from enum import Enum
+
+
+class Intent(str, Enum):
+    UPDATE_BUDGET = "UPDATE_BUDGET"
+    CREATE_REMINDER = "CREATE_REMINDER"
+    CHECK_BALANCE = "CHECK_BALANCE"
+    ADD_EXPENSE = "ADD_EXPENSE"
+    UNKNOWN = "UNKNOWN"
+
+
+def detect_intent(text: str) -> Intent:
+    """
+    Detects user intent from transcribed text.
+    Deterministic, rule-based (no ML).
+    """
+
+    if not text:
+        return Intent.UNKNOWN
+
+    text = text.lower()
+
+    # ---- Budget related ----
+    if "budget" in text or "limit" in text:
+        return Intent.UPDATE_BUDGET
+
+    # ---- Reminder related ----
+    if "remind" in text or "reminder" in text:
+        return Intent.CREATE_REMINDER
+
+    # ---- Balance check ----
+    if "balance" in text or "money left" in text:
+        return Intent.CHECK_BALANCE
+
+    # ---- Expense logging ----
+    if "spent" in text or "expense" in text or "paid" in text:
+        return Intent.ADD_EXPENSE
+
+    return Intent.UNKNOWN
