@@ -24,7 +24,7 @@ def update_slots(state: Dict, new_slots: Dict) -> Dict:
 
 def is_budget_state_complete(state: Dict) -> bool:
     slots = state.get("slots", {})
-    return slots.get("category") is not None and slots.get("amount") is not None
+    return slots.get("category") is not None and slots.get("limit") is not None
 
 
 def is_reminder_state_complete(state: Dict) -> bool:
