@@ -1,88 +1,73 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Float,
-    DateTime,
-    ForeignKey,
-    Text
-)
-from sqlalchemy.sql import func
-from app.db.session import Base
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
 
 
 # -----------------------------
 # User Model
 # -----------------------------
-class User(Base):
-    __tablename__ = "users"
+class User(BaseModel):
+    id: Optional[int] = None
+    email: str
+    created_at: Optional[datetime] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Config:
+        from_attributes = True
 
 
 # -----------------------------
 # Transaction Model
 # -----------------------------
-# -----------------------------
-# Transaction Model ✅ FIX
-# -----------------------------
-class Transaction(Base):
-    __tablename__ = "transactions"
+class Transaction(BaseModel):
+    id: Optional[int] = None
+    user_id: int
+    category: str
+    amount: float
+    description: Optional[str] = None
+    created_at: Optional[datetime] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    category = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)   # ✅ was "limit"
-    description = Column(Text, nullable=True)
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    class Config:
+        from_attributes = True
 
 
 # -----------------------------
 # Budget Model
 # -----------------------------
-class Budget(Base):
-    __tablename__ = "budgets"
+class Budget(BaseModel):
+    id: Optional[int] = None
+    user_id: int
+    category: str
+    limit: float
+    created_at: Optional[datetime] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    category = Column(String, nullable=False)
-    limit = Column(Float, nullable=False)
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Config:
+        from_attributes = True
 
 
 # -----------------------------
 # Reminder Model
 # -----------------------------
-class Reminder(Base):
-    __tablename__ = "reminders"
+class Reminder(BaseModel):
+    id: Optional[int] = None
+    user_id: int
+    name: str
+    day: int = Field(ge=1, le=28)  # day of month (1–28)
+    frequency: str  # monthly / weekly
+    created_at: Optional[datetime] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    name = Column(String, nullable=False)
-    day = Column(Integer, nullable=False)          # day of month (1–28)
-    frequency = Column(String, nullable=False)     # monthly / weekly
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Config:
+        from_attributes = True
 
 
 # -----------------------------
 # Audit Log Model
 # -----------------------------
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
+class AuditLog(BaseModel):
+    id: Optional[int] = None
+    user_id: int
+    action: str
+    details: str
+    timestamp: Optional[datetime] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
-
-    action = Column(String, nullable=False)
-    details = Column(Text, nullable=False)
-
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    class Config:
+        from_attributes = True

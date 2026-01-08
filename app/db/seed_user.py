@@ -1,13 +1,21 @@
-from app.db.session import SessionLocal
-from app.db.models import User
+from app.db.session import get_supabase
 
-db = SessionLocal()
+supabase = get_supabase()
 
-user = User(email="demo@hackathon.com")
-db.add(user)
-db.commit()
-db.refresh(user)
+# Check if user already exists
+response = supabase.table("users").select("*").eq("email", "demo@hackathon.com").execute()
 
-print("Demo user created with ID:", user.id)
-
-db.close()
+if not response.data:
+    # Create demo user
+    response = supabase.table("users").insert({
+        "email": "demo@hackathon.com"
+    }).execute()
+    
+    if response.data:
+        user_id = response.data[0]["id"]
+        print(f"Demo user created with ID: {user_id}")
+    else:
+        print("Failed to create demo user")
+else:
+    user_id = response.data[0]["id"]
+    print(f"Demo user already exists with ID: {user_id}")

@@ -27,11 +27,10 @@ regex==2023.12.25
 python-dateutil==2.8.2
 
 # ===============================
-# Database Layer (PostgreSQL)
+# Database Layer (Supabase)
 # ===============================
-SQLAlchemy==2.0.25
-psycopg2-binary==2.9.9
-alembic==1.13.1
+supabase==2.3.0
+postgrest==0.13.0
 
 # ===============================
 # Redis / Background Tasks
@@ -53,3 +52,5 @@ rich==13.7.0
 
 langchain
 langchain-openai
+transformers==4.35.0
+torch>=2.0.0

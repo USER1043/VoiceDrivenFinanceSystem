@@ -5,14 +5,14 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Depends, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from supabase import Client
 from pydantic import BaseModel
 
 # 🧠 AI NORMALIZER
 from app.ai.parser import normalize_command
 
 # DB
-from app.db.session import engine, SessionLocal, Base
+from app.db.session import get_supabase
 from app.db.models import User
 
 # Voice
@@ -44,12 +44,9 @@ logger = logging.getLogger("voice-finance")
 # -------------------------------------------------
 # DB DEPENDENCY
 # -------------------------------------------------
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_db() -> Client:
+    """Get Supabase client for database operations"""
+    return get_supabase()
 
 # -------------------------------------------------
 # APP LIFESPAN
@@ -58,17 +55,25 @@ def get_db():
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Voice Driven Finance System")
 
-    Base.metadata.create_all(bind=engine)
-    logger.info("✅ Database initialized")
-
-    db = SessionLocal()
+    # Check Supabase connection and seed default user
+    supabase = get_supabase()
     try:
-        if not db.query(User).filter(User.id == 1).first():
-            db.add(User(id=1, email="default@voice-finance.com"))
-            db.commit()
+        # Check if default user exists
+        response = supabase.table("users").select("*").eq("id", 1).execute()
+        
+        if not response.data:
+            # Create default user
+            supabase.table("users").insert({
+                "id": 1,
+                "email": "default@voice-finance.com"
+            }).execute()
             logger.info("✅ Default user seeded")
-    finally:
-        db.close()
+        else:
+            logger.info("✅ Default user already exists")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not seed default user: {e}")
+
+    logger.info("✅ Database initialized")
 
     yield
     logger.info("🛑 Shutting down Voice Driven Finance System")
@@ -131,7 +136,7 @@ def process_text_post(
     request: Optional[TextProcessRequest] = Body(None),
     text: Optional[str] = Query(None),
     user_id: int = Query(1),
-    db: Session = Depends(get_db),
+    db: Client = Depends(get_db),
 ):
     if request:
         text = request.text
@@ -146,12 +151,12 @@ def process_text_post(
 def process_text_get(
     text: str = Query(...),
     user_id: int = Query(1),
-    db: Session = Depends(get_db),
+    db: Client = Depends(get_db),
 ):
     return _process_text_command(text, user_id, db)
 
 
-def _process_text_command(text: str, user_id: int, db: Session):
+def _process_text_command(text: str, user_id: int, db: Client):
     normalized = normalize_command(text)
     logger.info(f"🧠 AI normalized: '{text}' → '{normalized}'")
 
@@ -163,12 +168,12 @@ def _process_text_command(text: str, user_id: int, db: Session):
     # -------------------------
     if intent == Intent.UPDATE_BUDGET:
         slots = extract_budget_slots(normalized)
-        if slots["category"] and slots["amount"]:
-            budget = set_budget(db, user_id, slots["category"], slots["amount"])
+        if slots["category"] and slots["limit"]:
+            budget = set_budget(supabase=db, user_id=user_id, category=slots["category"], limit=slots["limit"])
             response.update({
                 "status": "success",
                 "category": budget.category,
-                "amount": budget.amount,
+                "limit": budget.limit,
                 "voice_response": f"Budget updated for {budget.category}",
             })
 
@@ -179,10 +184,10 @@ def _process_text_command(text: str, user_id: int, db: Session):
         slots = extract_transaction_slots(normalized)
         if slots["category"] and slots["amount"]:
             txn = add_transaction(
-                db=db,
+                supabase=db,
                 user_id=user_id,
                 category=slots["category"],
-                amount=slots["amount"],   # ✅ FIXED
+                amount=slots["amount"],
                 description=normalized,
             )
             response.update({
@@ -208,7 +213,7 @@ def _process_text_command(text: str, user_id: int, db: Session):
 async def process_voice(
     file: UploadFile = File(...),
     user_id: int = 1,
-    db: Session = Depends(get_db),
+    db: Client = Depends(get_db),
 ):
     try:
         audio_path = await save_audio_file(file)
@@ -228,23 +233,23 @@ async def process_voice(
 
         if intent == Intent.UPDATE_BUDGET:
             slots = extract_budget_slots(normalized)
-            if slots["category"] and slots["amount"]:
-                budget = set_budget(db, user_id, slots["category"], slots["amount"])
+            if slots["category"] and slots["limit"]:
+                budget = set_budget(supabase=db, user_id=user_id, category=slots["category"], limit=slots["limit"])
                 response.update({
                     "status": "success",
                     "action": "Budget updated",
                     "category": budget.category,
-                    "amount": budget.amount,
+                    "limit": budget.limit,
                 })
 
         elif intent == Intent.ADD_EXPENSE:
             slots = extract_transaction_slots(normalized)
             if slots["category"] and slots["amount"]:
                 txn = add_transaction(
-                    db=db,
+                    supabase=db,
                     user_id=user_id,
                     category=slots["category"],
-                    amount=slots["amount"],   # ✅ FIXED
+                    amount=slots["amount"],
                     description=normalized,
                 )
                 response.update({
@@ -259,11 +264,11 @@ async def process_voice(
             slots = extract_reminder_slots(normalized)
             if slots["name"] and slots["day"]:
                 reminder = create_reminder(
-                    db,
-                    user_id,
-                    slots["name"],
-                    slots["day"],
-                    slots.get("frequency", "monthly"),
+                    supabase=db,
+                    user_id=user_id,
+                    name=slots["name"],
+                    day=slots["day"],
+                    frequency=slots.get("frequency", "monthly"),
                 )
                 response.update({
                     "status": "success",
@@ -272,8 +277,8 @@ async def process_voice(
                 })
 
         elif intent == Intent.CHECK_BALANCE:
-            budgets = get_all_budgets(db, user_id)
-            total = get_total_spent(db, user_id)
+            budgets = get_all_budgets(supabase=db, user_id=user_id)
+            total = get_total_spent(supabase=db, user_id=user_id)
 
             response.update({
                 "status": "success",
@@ -282,9 +287,9 @@ async def process_voice(
                 "budgets": [
                     {
                         "category": b.category,
-                        "amount": b.amount,
-                        "spent": get_total_spent(db, user_id, b.category),
-                        "remaining": b.amount - get_total_spent(db, user_id, b.category),
+                        "limit": b.limit,
+                        "spent": get_total_spent(supabase=db, user_id=user_id, category=b.category),
+                        "remaining": b.limit - get_total_spent(supabase=db, user_id=user_id, category=b.category),
                     }
                     for b in budgets
                 ],
@@ -303,15 +308,15 @@ async def process_voice(
 # ANALYTICS
 # -------------------------------------------------
 @app.get("/analytics/summary")
-def analytics(user_id: int = 1, db: Session = Depends(get_db)):
+def analytics(user_id: int = 1, db: Client = Depends(get_db)):
     return {
         "user_id": user_id,
-        "total_spent": get_total_spent(db, user_id),
+        "total_spent": get_total_spent(supabase=db, user_id=user_id),
         "budgets": [
-            {"category": b.category, "amount": b.amount}
-            for b in get_all_budgets(db, user_id)
+            {"category": b.category, "limit": b.limit}
+            for b in get_all_budgets(supabase=db, user_id=user_id)
         ],
-        "reminders": len(get_reminders(db, user_id)),
+        "reminders": len(get_reminders(supabase=db, user_id=user_id)),
     }
 
 # -------------------------------------------------

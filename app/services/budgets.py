@@ -1,6 +1,6 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from supabase import Client
 from typing import Optional
+from datetime import datetime
 
 from app.db.models import Budget
 from app.audit.logger import log_action
@@ -10,7 +10,7 @@ from app.audit.logger import log_action
 # Create or Update Budget
 # -----------------------------
 def set_budget(
-    db: Session,
+    supabase: Client,
     user_id: int,
     category: str,
     limit: float
@@ -23,35 +23,53 @@ def set_budget(
     if limit <= 0:
         raise ValueError("Budget limit must be greater than zero")
 
-    existing_budget = (
-        db.query(Budget)
-        .filter(Budget.user_id == user_id, Budget.category == category)
-        .first()
+    # Check if budget exists
+    existing_response = (
+        supabase.table("budgets")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("category", category)
+        .execute()
     )
 
-    if existing_budget:
-        existing_budget.limit = limit
-        action = "UPDATE_BUDGET"
-        budget = existing_budget
-    else:
-        budget = Budget(
-            user_id=user_id,
-            category=category,
-            limit=limit
-        )
-        db.add(budget)
-        action = "CREATE_BUDGET"
+    existing_budget_data = existing_response.data[0] if existing_response.data else None
 
-    try:
-        db.commit()
-        db.refresh(budget)
-    except IntegrityError:
-        db.rollback()
-        raise RuntimeError("Failed to set budget")
+    if existing_budget_data:
+        # Update existing budget
+        updated_response = (
+            supabase.table("budgets")
+            .update({"limit": limit})
+            .eq("id", existing_budget_data["id"])
+            .execute()
+        )
+        
+        if not updated_response.data:
+            raise RuntimeError("Failed to update budget")
+        
+        budget_data = updated_response.data[0]
+        budget = Budget(**budget_data)
+        action = "UPDATE_BUDGET"
+    else:
+        # Create new budget
+        data = {
+            "user_id": user_id,
+            "category": category,
+            "limit": limit,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        response = supabase.table("budgets").insert(data).execute()
+        
+        if not response.data:
+            raise RuntimeError("Failed to create budget")
+        
+        budget_data = response.data[0]
+        budget = Budget(**budget_data)
+        action = "CREATE_BUDGET"
 
     # Audit log
     log_action(
-        db=db,
+        supabase=supabase,
         user_id=user_id,
         action=action,
         details=f"{category} budget set to {limit}"
@@ -64,7 +82,7 @@ def set_budget(
 # Get Budget for Category
 # -----------------------------
 def get_budget(
-    db: Session,
+    supabase: Client,
     user_id: int,
     category: str
 ) -> Optional[Budget]:
@@ -72,36 +90,51 @@ def get_budget(
     Fetch budget for a specific category.
     """
 
-    return (
-        db.query(Budget)
-        .filter(Budget.user_id == user_id, Budget.category == category)
-        .first()
-    )
+    try:
+        response = (
+            supabase.table("budgets")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("category", category)
+            .execute()
+        )
+        
+        if not response.data:
+            return None
+        
+        return Budget(**response.data[0])
+    except Exception as e:
+        return None
 
 
 # -----------------------------
 # Get All Budgets for User
 # -----------------------------
 def get_all_budgets(
-    db: Session,
+    supabase: Client,
     user_id: int
 ) -> list[Budget]:
     """
     Fetch all budgets for a user.
     """
 
-    return (
-        db.query(Budget)
-        .filter(Budget.user_id == user_id)
-        .all()
-    )
+    try:
+        response = (
+            supabase.table("budgets")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return [Budget(**row) for row in response.data]
+    except Exception as e:
+        raise RuntimeError(f"Failed to get budgets: {str(e)}")
 
 
 # -----------------------------
 # Delete Budget
 # -----------------------------
 def delete_budget(
-    db: Session,
+    supabase: Client,
     user_id: int,
     category: str
 ) -> bool:
@@ -109,24 +142,37 @@ def delete_budget(
     Delete a budget for a category.
     """
 
-    budget = (
-        db.query(Budget)
-        .filter(Budget.user_id == user_id, Budget.category == category)
-        .first()
-    )
+    try:
+        # First find the budget
+        response = (
+            supabase.table("budgets")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("category", category)
+            .execute()
+        )
+        
+        if not response.data:
+            return False
 
-    if not budget:
-        return False
+        budget_id = response.data[0]["id"]
+        
+        # Delete the budget
+        delete_response = (
+            supabase.table("budgets")
+            .delete()
+            .eq("id", budget_id)
+            .execute()
+        )
 
-    db.delete(budget)
-    db.commit()
+        # Audit log
+        log_action(
+            supabase=supabase,
+            user_id=user_id,
+            action="DELETE_BUDGET",
+            details=f"{category} budget deleted"
+        )
 
-    # Audit log
-    log_action(
-        db=db,
-        user_id=user_id,
-        action="DELETE_BUDGET",
-        details=f"{category} budget deleted"
-    )
-
-    return True
+        return True
+    except Exception as e:
+        raise RuntimeError(f"Failed to delete budget: {str(e)}")

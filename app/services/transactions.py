@@ -1,6 +1,6 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from supabase import Client
 from typing import List, Optional
+from datetime import datetime
 
 from app.db.models import Transaction
 from app.audit.logger import log_action
@@ -11,7 +11,7 @@ from app.services.budgets import get_budget
 # Add Transaction / Expense
 # -----------------------------
 def add_transaction(
-    db: Session,
+    supabase: Client,
     user_id: int,
     category: str,
     amount: float,
@@ -24,9 +24,9 @@ def add_transaction(
     if amount <= 0:
         raise ValueError("Transaction amount must be positive")
 
-    budget = get_budget(db=db, user_id=user_id, category=category)
+    budget = get_budget(supabase=supabase, user_id=user_id, category=category)
 
-    total_spent = get_total_spent(db=db, user_id=user_id, category=category)
+    total_spent = get_total_spent(supabase=supabase, user_id=user_id, category=category)
     new_total = total_spent + amount
 
     budget_warning = None
@@ -42,62 +42,80 @@ def add_transaction(
                 f"Total spent: {new_total:.2f}"
             )
 
-    transaction = Transaction(
-        user_id=user_id,
-        category=category,
-        amount=amount,                 # ✅ FIX
-        description=description
-    )
+    # Insert transaction
+    data = {
+        "user_id": user_id,
+        "category": category,
+        "amount": amount,
+        "description": description,
+        "created_at": datetime.utcnow().isoformat()
+    }
 
     try:
-        db.add(transaction)
-        db.commit()
-        db.refresh(transaction)
-    except IntegrityError:
-        db.rollback()
-        raise RuntimeError("Failed to add transaction")
+        response = supabase.table("transactions").insert(data).execute()
+        if not response.data:
+            raise RuntimeError("Failed to add transaction")
+        
+        transaction_data = response.data[0]
+        transaction = Transaction(**transaction_data)
+        
+        log_action(
+            supabase=supabase,
+            user_id=user_id,
+            action="ADD_TRANSACTION",
+            details=f"{category} → {amount}"
+        )
 
-    log_action(
-        db=db,
-        user_id=user_id,
-        action="ADD_TRANSACTION",
-        details=f"{category} → {amount}"
-    )
+        if budget_warning:
+            transaction.budget_warning = budget_warning
 
-    if budget_warning:
-        transaction.budget_warning = budget_warning
-
-    return transaction
+        return transaction
+    except Exception as e:
+        raise RuntimeError(f"Failed to add transaction: {str(e)}")
 
 
 # -----------------------------
 # Get Transactions
 # -----------------------------
 def get_transactions(
-    db: Session,
+    supabase: Client,
     user_id: int,
     limit: int = 50
 ) -> List[Transaction]:
-    return (
-        db.query(Transaction)
-        .filter(Transaction.user_id == user_id)
-        .order_by(Transaction.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    try:
+        response = (
+            supabase.table("transactions")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return [Transaction(**row) for row in response.data]
+    except Exception as e:
+        raise RuntimeError(f"Failed to get transactions: {str(e)}")
 
 
 # -----------------------------
 # Get Total Spent
 # -----------------------------
 def get_total_spent(
-    db: Session,
+    supabase: Client,
     user_id: int,
     category: Optional[str] = None
 ) -> float:
-    query = db.query(Transaction).filter(Transaction.user_id == user_id)
-
-    if category:
-        query = query.filter(Transaction.category == category)
-
-    return sum(t.amount for t in query.all())   # ✅ FIX
+    try:
+        query = (
+            supabase.table("transactions")
+            .select("amount")
+            .eq("user_id", user_id)
+        )
+        
+        if category:
+            query = query.eq("category", category)
+        
+        response = query.execute()
+        
+        return sum(float(row["amount"]) for row in response.data)
+    except Exception as e:
+        raise RuntimeError(f"Failed to get total spent: {str(e)}")

@@ -1,6 +1,6 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from supabase import Client
 from typing import Optional, List
+from datetime import datetime
 
 from app.db.models import Reminder
 from app.audit.logger import log_action
@@ -10,7 +10,7 @@ from app.audit.logger import log_action
 # Create Reminder
 # -----------------------------
 def create_reminder(
-    db: Session,
+    supabase: Client,
     user_id: int,
     name: str,
     day: int,
@@ -24,74 +24,90 @@ def create_reminder(
     if day < 1 or day > 28:
         raise ValueError("Day must be between 1 and 28")
 
-    reminder = Reminder(
-        user_id=user_id,
-        name=name,
-        day=day,
-        frequency=frequency
-    )
+    data = {
+        "user_id": user_id,
+        "name": name,
+        "day": day,
+        "frequency": frequency,
+        "created_at": datetime.utcnow().isoformat()
+    }
 
     try:
-        db.add(reminder)
-        db.commit()
-        db.refresh(reminder)
-    except IntegrityError:
-        db.rollback()
-        raise RuntimeError("Failed to create reminder")
+        response = supabase.table("reminders").insert(data).execute()
+        
+        if not response.data:
+            raise RuntimeError("Failed to create reminder")
+        
+        reminder_data = response.data[0]
+        reminder = Reminder(**reminder_data)
 
-    log_action(
-        db=db,
-        user_id=user_id,
-        action="CREATE_REMINDER",
-        details=f"{name} on day {day} ({frequency})"
-    )
+        log_action(
+            supabase=supabase,
+            user_id=user_id,
+            action="CREATE_REMINDER",
+            details=f"{name} on day {day} ({frequency})"
+        )
 
-    return reminder
+        return reminder
+    except Exception as e:
+        raise RuntimeError(f"Failed to create reminder: {str(e)}")
 
 
 # -----------------------------
 # Get All Reminders for User
 # -----------------------------
 def get_reminders(
-    db: Session,
+    supabase: Client,
     user_id: int
 ) -> List[Reminder]:
     """
     Fetch all reminders for a user.
     """
-    return (
-        db.query(Reminder)
-        .filter(Reminder.user_id == user_id)
-        .all()
-    )
+    try:
+        response = (
+            supabase.table("reminders")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return [Reminder(**row) for row in response.data]
+    except Exception as e:
+        raise RuntimeError(f"Failed to get reminders: {str(e)}")
 
 
 # -----------------------------
 # Get Single Reminder
 # -----------------------------
 def get_reminder_by_id(
-    db: Session,
+    supabase: Client,
     reminder_id: int,
     user_id: int
 ) -> Optional[Reminder]:
     """
     Fetch a specific reminder by ID.
     """
-    return (
-        db.query(Reminder)
-        .filter(
-            Reminder.id == reminder_id,
-            Reminder.user_id == user_id
+    try:
+        response = (
+            supabase.table("reminders")
+            .select("*")
+            .eq("id", reminder_id)
+            .eq("user_id", user_id)
+            .execute()
         )
-        .first()
-    )
+        
+        if not response.data:
+            return None
+        
+        return Reminder(**response.data[0])
+    except Exception as e:
+        return None
 
 
 # -----------------------------
 # Update Reminder
 # -----------------------------
 def update_reminder(
-    db: Session,
+    supabase: Client,
     reminder_id: int,
     user_id: int,
     day: Optional[int] = None,
@@ -101,37 +117,55 @@ def update_reminder(
     Update an existing reminder.
     """
 
-    reminder = get_reminder_by_id(db, reminder_id, user_id)
+    reminder = get_reminder_by_id(supabase, reminder_id, user_id)
 
     if not reminder:
         raise ValueError("Reminder not found")
 
+    update_data = {}
+    
     if day is not None:
         if day < 1 or day > 28:
             raise ValueError("Day must be between 1 and 28")
-        reminder.day = day
+        update_data["day"] = day
 
     if frequency is not None:
-        reminder.frequency = frequency
+        update_data["frequency"] = frequency
 
-    db.commit()
-    db.refresh(reminder)
+    if not update_data:
+        return reminder
 
-    log_action(
-        db=db,
-        user_id=user_id,
-        action="UPDATE_REMINDER",
-        details=f"Reminder {reminder_id} updated"
-    )
+    try:
+        response = (
+            supabase.table("reminders")
+            .update(update_data)
+            .eq("id", reminder_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        
+        if not response.data:
+            raise RuntimeError("Failed to update reminder")
+        
+        updated_reminder = Reminder(**response.data[0])
 
-    return reminder
+        log_action(
+            supabase=supabase,
+            user_id=user_id,
+            action="UPDATE_REMINDER",
+            details=f"Reminder {reminder_id} updated"
+        )
+
+        return updated_reminder
+    except Exception as e:
+        raise RuntimeError(f"Failed to update reminder: {str(e)}")
 
 
 # -----------------------------
 # Delete Reminder
 # -----------------------------
 def delete_reminder(
-    db: Session,
+    supabase: Client,
     reminder_id: int,
     user_id: int
 ) -> bool:
@@ -139,19 +173,27 @@ def delete_reminder(
     Delete a reminder.
     """
 
-    reminder = get_reminder_by_id(db, reminder_id, user_id)
+    reminder = get_reminder_by_id(supabase, reminder_id, user_id)
 
     if not reminder:
         return False
 
-    db.delete(reminder)
-    db.commit()
+    try:
+        delete_response = (
+            supabase.table("reminders")
+            .delete()
+            .eq("id", reminder_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
 
-    log_action(
-        db=db,
-        user_id=user_id,
-        action="DELETE_REMINDER",
-        details=f"Reminder {reminder_id} deleted"
-    )
+        log_action(
+            supabase=supabase,
+            user_id=user_id,
+            action="DELETE_REMINDER",
+            details=f"Reminder {reminder_id} deleted"
+        )
 
-    return True
+        return True
+    except Exception as e:
+        raise RuntimeError(f"Failed to delete reminder: {str(e)}")
