@@ -10,3 +10,5 @@ wheels/
 .venv
 *.sh
 .env
+audio_inputs/
+audio_outputs/

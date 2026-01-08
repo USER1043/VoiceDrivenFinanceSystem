@@ -1,27 +1,32 @@
 import whisper
 import os
+from app.voice.audio_preprocess import preprocess_audio
 
-# Load Whisper model once (important for performance)
-_model = None
-
-
-def get_model():
-    global _model
-    if _model is None:
-        _model = whisper.load_model("base")
-    return _model
+model = whisper.load_model("small")  # small > base for accents
 
 
 def transcribe_audio(audio_path: str) -> str:
-    """
-    Transcribes a WAV audio file to text using Whisper.
-    """
+    if not audio_path or not os.path.exists(audio_path):
+        raise ValueError("Audio file does not exist")
 
-    if not os.path.exists(audio_path):
-        raise FileNotFoundError("Audio file not found")
+    clean_audio = preprocess_audio(audio_path)
 
-    model = get_model()
-    result = model.transcribe(audio_path)
+    result = model.transcribe(
+        clean_audio,
+        language="en",
+        fp16=False,                 # REQUIRED on Windows
+        temperature=0.0,            # no randomness
+        condition_on_previous_text=False,
+        initial_prompt=(
+            "The user gives short finance commands like "
+            "'set food budget to 6000', "
+            "'add expense 250 food', "
+            "'check balance'."
+        ),
+        no_speech_threshold=0.25,
+        logprob_threshold=-1.0,
+        compression_ratio_threshold=2.2
+    )
 
-    text = result.get("text", "").strip()
+    text = result.get("text", "").strip().lower()
     return text

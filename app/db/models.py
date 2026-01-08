@@ -32,7 +32,7 @@ class Transaction(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     category = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)
+    limit = Column(Float, nullable=False)
     description = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

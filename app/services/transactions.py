@@ -13,7 +13,7 @@ def add_transaction(
     db: Session,
     user_id: int,
     category: str,
-    amount: float,
+    limit: float,
     description: Optional[str] = None
 ) -> Transaction:
     """
@@ -21,13 +21,13 @@ def add_transaction(
     """
 
     # Service-level validation
-    if amount <= 0:
-        raise ValueError("Transaction amount must be positive")
+    if limit <= 0:
+        raise ValueError("Transaction limit must be positive")
 
     transaction = Transaction(
         user_id=user_id,
         category=category,
-        amount=amount,
+        limit=limit,
         description=description
     )
 
@@ -44,7 +44,7 @@ def add_transaction(
         db=db,
         user_id=user_id,
         action="ADD_TRANSACTION",
-        details=f"{category} → {amount}"
+        details=f"{category} → {limit}"
     )
 
     return transaction
@@ -112,7 +112,7 @@ def get_total_spent(
     if category:
         query = query.filter(Transaction.category == category)
 
-    return sum(t.amount for t in query.all())
+    return sum(t.limit for t in query.all())
 
 
 # -----------------------------

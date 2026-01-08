@@ -1,105 +1,120 @@
+import re
 from typing import Dict, Optional
-import json
 
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_openai import ChatOpenAI
-
-
-llm = ChatOpenAI(
-    model="gpt-3.5-turbo",
-    temperature=0
-)
-
-budget_slot_prompt = PromptTemplate(
-    input_variables=["text"],
-    template="""
-Extract budget details from the text.
-
-Return JSON ONLY in this format:
-{{
-  "category": string | null,
-  "amount": number | null
-}}
-
-Text:
-{text}
-"""
-)
-
-budget_chain = LLMChain(
-    llm=llm,
-    prompt=budget_slot_prompt
-)
-
-
+# -----------------------------
+# Budget Slots
+# -----------------------------
 def extract_budget_slots(text: str) -> Dict[str, Optional[str | float]]:
-    try:
-        response = budget_chain.run(text=text)
-        return json.loads(response)
-    except Exception:
-        return {"category": None, "amount": None}
+    """
+    Extract slots for budget intent.
+    Example:
+    "set food budget to 6000"
+    """
+
+    text = text.lower()
+
+    category = None
+    limit = None
+
+    # Category detection
+    if "food" in text:
+        category = "food"
+    elif "travel" in text:
+        category = "travel"
+    elif "shopping" in text:
+        category = "shopping"
+    elif "rent" in text:
+        category = "rent"
+    elif "entertainment" in text:
+        category = "entertainment"
+
+    # limit / limit detection
+    limit_match = re.search(r"\b(\d{2,7})\b", text)
+    if limit_match:
+        limit = float(limit_match.group(1))
+
+    return {
+        "category": category,
+        "limit": limit
+    }
 
 
 # -----------------------------
 # Reminder Slots
 # -----------------------------
-reminder_prompt = PromptTemplate(
-    input_variables=["text"],
-    template="""
-Extract reminder details.
+def extract_reminder_slots(text: str) -> Dict[str, Optional[str | int]]:
+    """
+    Extract slots for reminder intent.
+    Example:
+    "remind me to pay electricity bill on the 5th"
+    """
 
-Return JSON ONLY:
-{{
-  "name": string | null,
-  "day": number | null,
-  "frequency": "weekly" | "monthly" | null
-}}
+    text = text.lower()
 
-Text:
-{text}
-"""
-)
+    name = None
+    day = None
+    frequency = "monthly"
 
-reminder_chain = LLMChain(llm=llm, prompt=reminder_prompt)
+    # Reminder name
+    if "electricity" in text:
+        name = "electricity bill"
+    elif "credit card" in text:
+        name = "credit card bill"
+    elif "rent" in text:
+        name = "rent"
+    elif "internet" in text:
+        name = "internet bill"
 
+    # Day detection
+    day_match = re.search(r"\b(\d{1,2})\b", text)
+    if day_match:
+        day = int(day_match.group(1))
 
-def extract_reminder_slots(text: str) -> Dict:
-    try:
-        return json.loads(reminder_chain.run(text=text))
-    except Exception:
-        return {"name": None, "day": None, "frequency": None}
+    # Frequency detection
+    if "weekly" in text:
+        frequency = "weekly"
+    elif "monthly" in text:
+        frequency = "monthly"
+
+    return {
+        "name": name,
+        "day": day,
+        "frequency": frequency
+    }
 
 
 # -----------------------------
-# Transaction Slots
+# Expense / Transaction Slots
 # -----------------------------
-transaction_prompt = PromptTemplate(
-    input_variables=["text"],
-    template="""
-Extract expense details.
+def extract_transaction_slots(text: str) -> Dict[str, Optional[str | float]]:
+    """
+    Extract slots for expense intent.
+    Example:
+    "I spent 250 on food"
+    """
 
-Return JSON ONLY:
-{{
-  "category": string | null,
-  "amount": number | null,
-  "description": string | null
-}}
+    text = text.lower()
 
-Text:
-{text}
-"""
-)
+    category = None
+    limit = None
 
-transaction_chain = LLMChain(llm=llm, prompt=transaction_prompt)
+    # Category detection
+    if "food" in text:
+        category = "food"
+    elif "travel" in text:
+        category = "travel"
+    elif "shopping" in text:
+        category = "shopping"
+    elif "rent" in text:
+        category = "rent"
 
+    # limit detection
+    limit_match = re.search(r"\b(\d{1,7})\b", text)
+    if limit_match:
+        limit = float(limit_match.group(1))
 
-def extract_transaction_slots(text: str) -> Dict:
-    try:
-        return json.loads(transaction_chain.run(text=text))
-    except Exception:
-        return {
-            "category": None,
-            "amount": None,
-            "description": None
-        }
+    return {
+        "category": category,
+        "limit": limit,
+        "description": text
+    }
