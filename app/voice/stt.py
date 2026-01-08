@@ -1,24 +1,32 @@
+import whisper
 import os
-from fastapi import UploadFile
-from datetime import datetime
+from app.voice.audio_preprocess import preprocess_audio
 
-AUDIO_DIR = "audio_inputs"
+model = whisper.load_model("small")  # small > base for accents
 
-os.makedirs(AUDIO_DIR, exist_ok=True)
 
-async def save_audio_file(audio: UploadFile) -> str:
-    """
-    Saves uploaded audio file and returns file path
-    """
-    if audio.content_type not in ["audio/wav", "audio/x-wav"]:
-        raise ValueError("Invalid audio format. Only WAV supported.")
+def speech_to_text(audio_path: str) -> str:
+    if not audio_path or not os.path.exists(audio_path):
+        raise ValueError("Audio file does not exist")
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"voice_{timestamp}.wav"
-    file_path = os.path.join(AUDIO_DIR, filename)
+    clean_audio = preprocess_audio(audio_path)
 
-    with open(file_path, "wb") as f:
-        content = await audio.read()
-        f.write(content)
+    result = model.transcribe(
+        clean_audio,
+        language="en",
+        fp16=False,                 # REQUIRED on Windows
+        temperature=0.0,            # no randomness
+        condition_on_previous_text=False,
+        initial_prompt=(
+            "The user gives short finance commands like "
+            "'set food budget to 6000', "
+            "'add expense 250 food', "
+            "'check balance'."
+        ),
+        no_speech_threshold=0.25,
+        logprob_threshold=-1.0,
+        compression_ratio_threshold=2.2
+    )
 
-    return file_path
+    text = result.get("text", "").strip().lower()
+    return text
