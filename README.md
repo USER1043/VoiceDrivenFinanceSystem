@@ -138,10 +138,11 @@ http://localhost:5173
 
 ---
 
-### Teammates
-1. Prajan Karthik 
-2. Girish Kumar S
-3. Riteesh T M
-4. Nehan G R M 
+### Contributors
+1. Prajan Karthik -  https://github.com/USER1043
+2. Girish Kumar S - https://github.com/GIRISH020106
+3. Riteesh T M - https://github.com/RiteeshTM
+4. Nehan G R M - https://github.com/NEHANGRM
+
 
 
