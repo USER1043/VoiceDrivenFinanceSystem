@@ -7,10 +7,10 @@ def test_tts_basic():
     """
     result = {
         "category": "food",
-        "amount": 600
+        "limit": 600
     }
 
-    text = f"Your {result['category']} budget is set to {result['amount']} rupees"
+    text = f"Your {result['category']} budget is set to {result['limit']} rupees"
     
 
     audio_path = speak(text)
