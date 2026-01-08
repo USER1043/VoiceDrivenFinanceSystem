@@ -34,7 +34,7 @@ def handle_voice(
         return {
             "message": "Budget updated successfully",
             "category": budget.category,
-            "limit": budget.limit
+            "amount": budget.limit
         }
 
     return {
