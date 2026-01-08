@@ -102,12 +102,46 @@ Supported intents:
 
 ---
 
-## Getting Started (Frontend)
+---
 
+## ⚙️ Tech Stack
+
+### Backend
+- FastAPI
+- SQLAlchemy
+- SQLite / PostgreSQL
+- Python 3.11
+- Uvicorn
+
+### Frontend
+- React (Vite)
+- Axios
+- Web Speech API (STT & TTS)
+- CSS
+
+---
+
+## ▶️ Running the Project
+
+### Backend
+
+```bash
+cd VoiceDrivenFinanceSystem
+uv run python -m uvicorn app.main:app --reload
+```
+### Frontend
 ```bash
 npm install
 npm run dev
 http://localhost:5173
+```
 
-    
+---
+
+### Teammates
+1. Prajan Karthik 
+2. Girish Kumar S
+3. Riteesh T M
+4. Nehan G R M 
+
 
