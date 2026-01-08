@@ -1,24 +1,27 @@
+import whisper
 import os
-from fastapi import UploadFile
-from datetime import datetime
 
-AUDIO_DIR = "audio_inputs"
+# Load Whisper model once (important for performance)
+_model = None
 
-os.makedirs(AUDIO_DIR, exist_ok=True)
 
-async def save_audio_file(audio: UploadFile) -> str:
+def get_model():
+    global _model
+    if _model is None:
+        _model = whisper.load_model("base")
+    return _model
+
+
+def transcribe_audio(audio_path: str) -> str:
     """
-    Saves uploaded audio file and returns file path
+    Transcribes a WAV audio file to text using Whisper.
     """
-    if audio.content_type not in ["audio/wav", "audio/x-wav"]:
-        raise ValueError("Invalid audio format. Only WAV supported.")
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"voice_{timestamp}.wav"
-    file_path = os.path.join(AUDIO_DIR, filename)
+    if not os.path.exists(audio_path):
+        raise FileNotFoundError("Audio file not found")
 
-    with open(file_path, "wb") as f:
-        content = await audio.read()
-        f.write(content)
+    model = get_model()
+    result = model.transcribe(audio_path)
 
-    return file_path
+    text = result.get("text", "").strip()
+    return text
