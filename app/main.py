@@ -1,10 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Depends
+from fastapi import FastAPI, UploadFile, File, Depends, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from typing import Optional
+from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # DB
 from app.db.session import engine, SessionLocal, Base
@@ -90,17 +93,67 @@ app = FastAPI(
 # -------------------------------------------------
 # CORS (PROD FRIENDLY)
 # -------------------------------------------------
+# For development, allow common origins
+# In production, restrict to specific frontend URL
+# NOTE: Cannot use allow_origins=["*"] with allow_credentials=True
+# Browser security restriction - must specify exact origins
+import os
+is_dev = os.getenv("ENVIRONMENT", "development") == "development"
+
+# Common development origins
+dev_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
+    # Add more as needed
+]
+
+# Production origins - add your frontend URL here
+prod_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        # add frontend prod URL here later
-    ],
+    allow_origins=dev_origins if is_dev else prod_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # Cache preflight for 1 hour
 )
+
+# -------------------------------------------------
+# CORS PREFLIGHT HANDLER
+# -------------------------------------------------
+@app.options("/{full_path:path}")
+async def options_handler(request: Request, full_path: str):
+    """Handle CORS preflight requests explicitly"""
+    origin = request.headers.get("origin")
+    # Use appropriate origin list based on environment
+    allowed_origins = dev_origins if is_dev else prod_origins
+    if origin and origin in allowed_origins:
+        return JSONResponse(
+            content={},
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
+    return JSONResponse(content={})
 
 # -------------------------------------------------
 # ROOT
@@ -114,14 +167,50 @@ def root():
     }
 
 # -------------------------------------------------
+# REQUEST MODELS
+# -------------------------------------------------
+class TextProcessRequest(BaseModel):
+    text: str
+    user_id: Optional[int] = 1
+
+
+# -------------------------------------------------
 # MAIN TEXT PIPIELINE (BACKUP)
 # -------------------------------------------------
 @app.post("/text/process")
-def process_text_command(
-    text: str,
-    user_id: int = 1,
+def process_text_command_post(
+    request: Optional[TextProcessRequest] = Body(None),
+    text: Optional[str] = Query(None),
+    user_id: int = Query(1),
     db: Session = Depends(get_db),
 ):
+    # Support both JSON body and query parameter
+    if request:
+        text = request.text
+        user_id = request.user_id or user_id
+    elif not text:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "Text parameter is required"}
+        )
+    return _process_text_command(text, user_id, db)
+
+
+@app.get("/text/process")
+def process_text_command_get(
+    text: str = Query(...),
+    user_id: int = Query(1),
+    db: Session = Depends(get_db),
+):
+    return _process_text_command(text, user_id, db)
+
+
+def _process_text_command(
+    text: str,
+    user_id: int,
+    db: Session,
+):
+
     intent = detect_intent(text)
 
     response = {
@@ -153,12 +242,18 @@ def process_text_command(
                 user_id=user_id,
                 category=slots["category"],
                 limit=slots["limit"],
+                description=slots.get("description"),
             )
+            budget_warning = getattr(txn, "budget_warning", None)
+            voice_msg = f"Expense of {txn.limit} added"
+            if budget_warning:
+                voice_msg += f". {budget_warning}"
             response.update({
                 "status": "success",
                 "category": txn.category,
                 "limit": txn.limit,
-                "voice_response": f"Expense of {txn.limit} added",
+                "budget_warning": budget_warning,
+                "voice_response": voice_msg,
             })
 
     else:
@@ -230,6 +325,7 @@ async def process_voice_command(
                     "action": "Expense added",
                     "category": txn.category,
                     "limit": txn.limit,
+                    "budget_warning": getattr(txn, "budget_warning", None),
                 })
 
         elif intent == Intent.CREATE_REMINDER:
@@ -249,11 +345,26 @@ async def process_voice_command(
                 })
 
         elif intent == Intent.CHECK_BALANCE:
+            budgets = get_all_budgets(db=db, user_id=user_id)
             total = get_total_spent(db=db, user_id=user_id)
+            
+            # Calculate balance per category (cascading operation)
+            balance_info = []
+            for budget in budgets:
+                category_spent = get_total_spent(db=db, user_id=user_id, category=budget.category)
+                remaining = budget.limit - category_spent
+                balance_info.append({
+                    "category": budget.category,
+                    "limit": budget.limit,
+                    "spent": category_spent,
+                    "remaining": remaining
+                })
+            
             response.update({
                 "status": "success",
                 "action": "Balance checked",
                 "total_spent": total,
+                "budgets": balance_info,
             })
 
         else:
@@ -303,9 +414,17 @@ def generate_tts_response(data: dict) -> str:
     if action == "Budget updated":
         return f"Budget set for {data['category']} at {data['limit']} rupees."
     if action == "Expense added":
-        return f"Expense of {data['limit']} rupees recorded."
+        msg = f"Expense of {data['limit']} rupees recorded."
+        if data.get("budget_warning"):
+            msg += f" {data['budget_warning']}"
+        return msg
     if action == "Balance checked":
-        return f"You have spent {data['total_spent']} rupees in total."
+        msg = f"You have spent {data['total_spent']} rupees in total."
+        if data.get("budgets"):
+            for budget_info in data["budgets"]:
+                remaining = budget_info.get("remaining", budget_info['limit'] - budget_info['spent'])
+                msg += f" {budget_info['category']}: {budget_info['spent']:.2f} spent out of {budget_info['limit']:.2f}, {remaining:.2f} remaining."
+        return msg
 
     return "Action completed successfully."
 

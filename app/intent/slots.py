@@ -108,10 +108,10 @@ def extract_transaction_slots(text: str) -> Dict[str, Optional[str | float]]:
     elif "rent" in text:
         category = "rent"
 
-    # limit detection
-    limit_match = re.search(r"\b(\d{1,7})\b", text)
-    if limit_match:
-        limit = float(limit_match.group(1))
+    # amount detection (stored as limit in Transaction model)
+    match = re.search(r"\b(\d{1,7})\b", text)
+    if match:
+        limit = float(match.group(1))
 
     return {
         "category": category,

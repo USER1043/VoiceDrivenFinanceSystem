@@ -61,7 +61,7 @@ def handle_voice(
         
         if not slots["category"] or not slots["limit"]:
             return {
-                "message": "Could not extract transaction information. Please specify category and limit.",
+                "message": "Could not extract transaction information. Please specify category and amount.",
                 "intent": intent.value
             }
 
@@ -73,13 +73,20 @@ def handle_voice(
             description=slots.get("description")
         )
 
-        return {
+        budget_warning = getattr(transaction, "budget_warning", None)
+        response = {
             "message": "Expense added successfully",
             "intent": intent.value,
             "category": transaction.category,
-            "limit": transaction.limit,
+            "amount": transaction.limit,
             "transaction_id": transaction.id
         }
+        
+        if budget_warning:
+            response["budget_warning"] = budget_warning
+            response["message"] += f". {budget_warning}"
+
+        return response
 
     elif intent == Intent.CREATE_REMINDER:
         slots = extract_reminder_slots(text)

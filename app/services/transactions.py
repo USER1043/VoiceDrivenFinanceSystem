@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from app.db.models import Transaction
 from app.audit.logger import log_action
+from app.services.budgets import get_budget
 
 
 # -----------------------------
@@ -18,11 +19,30 @@ def add_transaction(
 ) -> Transaction:
     """
     Add a new transaction (expense).
+    Performs cascading operations:
+    - Checks if budget exists for category
+    - Calculates total spent including new transaction
+    - Validates against budget limit
     """
 
     # Service-level validation
     if limit <= 0:
-        raise ValueError("Transaction limit must be positive")
+        raise ValueError("Transaction amount must be positive")
+
+    # Check if budget exists for this category (cascading operation)
+    budget = get_budget(db=db, user_id=user_id, category=category)
+    
+    # Calculate total spent including this new transaction
+    total_spent = get_total_spent(db=db, user_id=user_id, category=category)
+    new_total = total_spent + limit
+    
+    # Budget validation and warning
+    budget_warning = None
+    if budget:
+        if new_total > budget.limit:
+            budget_warning = f"WARNING: Budget exceeded! Limit: {budget.limit}, Total spent: {new_total:.2f}"
+        elif new_total > budget.limit * 0.9:
+            budget_warning = f"WARNING: Approaching budget limit. Limit: {budget.limit}, Total spent: {new_total:.2f}"
 
     transaction = Transaction(
         user_id=user_id,
@@ -39,13 +59,18 @@ def add_transaction(
         db.rollback()
         raise RuntimeError("Failed to add transaction")
 
-    # Audit log
+    # Audit log with budget status
+    budget_status = f" (Budget: {budget.limit}, Total: {new_total:.2f})" if budget else " (No budget set)"
     log_action(
         db=db,
         user_id=user_id,
         action="ADD_TRANSACTION",
-        details=f"{category} → {limit}"
+        details=f"{category} → {limit}{budget_status}"
     )
+    
+    # Store budget warning as attribute for response handling
+    if budget_warning:
+        transaction.budget_warning = budget_warning
 
     return transaction
 
