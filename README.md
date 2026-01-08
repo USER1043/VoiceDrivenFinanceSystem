@@ -67,51 +67,47 @@ Supported intents:
 ---
 
 ## Project Structure
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── Header.jsx
-│   │   ├── VoiceInput.jsx
-│   │   └── ResultCard.jsx
-│   │
-│   ├── pages/
-│   │   └── Dashboard.jsx
-│   │
-│   ├── services/
-│   │   └── api.js
-│   │
-│   ├── utils/
-│   │   └── wavEncoder.js
-│   │
-│   ├── App.jsx
-│   ├── main.jsx
-│   └── index.css
+    frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── Header.jsx
+    │   │   ├── VoiceInput.jsx
+    │   │   └── ResultCard.jsx
+    │   │
+    │   ├── pages/
+    │   │   └── Dashboard.jsx
+    │   │
+    │   ├── services/
+    │   │   └── api.js
+    │   │
+    │   ├── utils/
+    │   │   └── wavEncoder.js
+    │   │
+    │   ├── App.jsx
+    │   ├── main.jsx
+    │   └── index.css
+    │
+    backend/
+    ├── app/
+    │   ├── main.py                 
+    │   │
+    │   ├── core/
+    │   │   ├── config.py           
+    │   │   ├── security.py         
+    │   │   └── logging.py           
+    │   │
+    │   ├── api/
+    │   │   ├── __init__.py
+    │   │   ├── voice.py
 
-backend/
-├── app/
-│   ├── main.py                 # FastAPI app entry point
-│   │
-│   ├── core/
-│   │   ├── config.py           # App config, env vars
-│   │   ├── security.py         # Auth, API keys, guards (future)
-│   │   └── logging.py          # Audit & request logging
-│   │
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── voice.py            # Voice & text endpoints
-│   │   └── health.py           # Health / test endpoints
-│   │
-│   ├── voice/
-│   │   ├── __init__.py
-│   │   ├── recorder.py         # Save uploaded audio (.wav)
-│   │   ├── stt.py              # Speech-to-text (Whisper)
-│   │   └── tts.py              # Text-to-speech (optional)
-│   │
-│   ├── intent/
-│   │   ├── __init__.py
-│   │   ├── classifier.py       # Intent detection logic
-│   │   └── rules.py            # Rule-based fallback
-│   │
-│   ├── services/
-│   │   ├──
+---
+
+## Getting Started (Frontend)
+
+```bash
+npm install
+npm run dev
+http://localhost:5173
+
+    
 
