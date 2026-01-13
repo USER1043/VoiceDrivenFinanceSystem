@@ -15,16 +15,14 @@ soundfile==0.12.1
 numpy==1.26.4
 
 # ===============================
-# Text-to-Speech (Optional)
+# Text-to-Speech
 # ===============================
-pyttsx3==2.90
 gtts==2.5.1
 
 # ===============================
 # Intent Parsing & Utilities
 # ===============================
 regex==2023.12.25
-python-dateutil==2.8.2
 
 # ===============================
 # Database Layer (Supabase)
@@ -48,9 +46,10 @@ passlib[bcrypt]==1.7.4
 # Logging & Debugging
 # ===============================
 loguru==0.7.2
-rich==13.7.0
 
-langchain
-langchain-openai
+# ===============================
+# AI / ML Models
+# ===============================
 transformers==4.35.0
 torch>=2.0.0
+
