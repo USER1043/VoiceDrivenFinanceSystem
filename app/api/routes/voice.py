@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client
 from pydantic import BaseModel
 from typing import Optional
 import logging
 
-from app.api.deps import get_db
+from app.db.session import get_db_cursor
 from app.intent.detector import detect_intent, Intent
 from app.intent.slots import (
     extract_budget_slots,
@@ -32,10 +31,7 @@ class VoiceResponse(BaseModel):
 
 
 @router.post("/voice", response_model=VoiceResponse)
-def handle_voice(
-    request: VoiceRequest,
-    db: Client = Depends(get_db)
-):
+def handle_voice(request: VoiceRequest):
     """
     Handle voice commands by detecting intent and executing appropriate action.
     """
@@ -48,16 +44,16 @@ def handle_voice(
         logger.info(f"Detected intent: {intent.value} for user {user_id}")
 
         if intent == Intent.UPDATE_BUDGET:
-            return handle_update_budget(db, user_id, text, intent)
+            return handle_update_budget(user_id, text, intent)
         
         elif intent == Intent.ADD_EXPENSE:
-            return handle_add_expense(db, user_id, text, intent)
+            return handle_add_expense(user_id, text, intent)
         
         elif intent == Intent.CREATE_REMINDER:
-            return handle_create_reminder(db, user_id, text, intent)
+            return handle_create_reminder(user_id, text, intent)
         
         elif intent == Intent.CHECK_BALANCE:
-            return handle_check_balance(db, user_id, intent)
+            return handle_check_balance(user_id, intent)
         
         else:
             return VoiceResponse(
@@ -76,7 +72,6 @@ def handle_voice(
 
 
 def handle_update_budget(
-    db: Client,
     user_id: int,
     text: str,
     intent: Intent
@@ -93,7 +88,6 @@ def handle_update_budget(
     
     try:
         budget = set_budget(
-            supabase=db,
             user_id=user_id,
             category=slots["category"],
             limit=slots["limit"]
@@ -118,7 +112,6 @@ def handle_update_budget(
 
 
 def handle_add_expense(
-    db: Client,
     user_id: int,
     text: str,
     intent: Intent
@@ -138,7 +131,6 @@ def handle_add_expense(
     
     try:
         transaction = add_transaction(
-            supabase=db,
             user_id=user_id,
             category=category,
             amount=amount,
@@ -148,11 +140,11 @@ def handle_add_expense(
         logger.info(f"Transaction added: {transaction.category} - ${transaction.amount}")
         
         # Check for budget warnings
-        budget = get_budget(supabase=db, user_id=user_id, category=category)
+        budget = get_budget(user_id=user_id, category=category)
         budget_warning = None
         
         if budget:
-            total_spent = get_total_spent(supabase=db, user_id=user_id, category=category)
+            total_spent = get_total_spent(user_id=user_id, category=category)
             if total_spent >= budget.limit:
                 budget_warning = f"Warning: You've exceeded your {category} budget of ${budget.limit}!"
             elif total_spent >= budget.limit * 0.8:
@@ -182,7 +174,6 @@ def handle_add_expense(
 
 
 def handle_create_reminder(
-    db: Client,
     user_id: int,
     text: str,
     intent: Intent
@@ -199,7 +190,6 @@ def handle_create_reminder(
     
     try:
         reminder = create_reminder(
-            supabase=db,
             user_id=user_id,
             name=slots["name"],
             day=slots["day"],
@@ -226,14 +216,13 @@ def handle_create_reminder(
 
 
 def handle_check_balance(
-    db: Client,
     user_id: int,
     intent: Intent
 ) -> VoiceResponse:
     """Handle balance check intent."""
     try:
-        budgets = get_all_budgets(supabase=db, user_id=user_id)
-        transactions = get_transactions(supabase=db, user_id=user_id, limit=100)
+        budgets = get_all_budgets(user_id=user_id)
+        transactions = get_transactions(user_id=user_id, limit=100)
         
         if not budgets:
             return VoiceResponse(
@@ -252,7 +241,7 @@ def handle_check_balance(
         total_spent = 0
         
         for budget in budgets:
-            spent = get_total_spent(supabase=db, user_id=user_id, category=budget.category)
+            spent = get_total_spent(user_id=user_id, category=budget.category)
             remaining = budget.limit - spent
             percentage_used = (spent / budget.limit * 100) if budget.limit > 0 else 0
             
@@ -289,3 +278,4 @@ def handle_check_balance(
     except Exception as e:
         logger.error(f"Error checking balance: {str(e)}")
         raise
+

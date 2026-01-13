@@ -1,16 +1,16 @@
-from supabase import Client
 from typing import Optional, List
 from datetime import datetime
+import psycopg2
 
 from app.db.models import Reminder
 from app.audit.logger import log_action
+from app.db.session import get_db_cursor
 
 
 # -----------------------------
 # Create Reminder
 # -----------------------------
 def create_reminder(
-    supabase: Client,
     user_id: int,
     name: str,
     day: int,
@@ -24,90 +24,113 @@ def create_reminder(
     if day < 1 or day > 28:
         raise ValueError("Day must be between 1 and 28")
 
-    data = {
-        "user_id": user_id,
-        "name": name,
-        "day": day,
-        "frequency": frequency,
-        "created_at": datetime.utcnow().isoformat()
-    }
-
-    try:
-        response = supabase.table("reminders").insert(data).execute()
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO reminders (user_id, name, day, frequency, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, user_id, name, day, frequency, created_at
+            """,
+            (user_id, name, day, frequency, datetime.utcnow())
+        )
         
-        if not response.data:
+        row = cursor.fetchone()
+        if not row:
             raise RuntimeError("Failed to create reminder")
         
-        reminder_data = response.data[0]
+        reminder_data = {
+            "id": row[0],
+            "user_id": row[1],
+            "name": row[2],
+            "day": row[3],
+            "frequency": row[4],
+            "created_at": row[5]
+        }
+        
         reminder = Reminder(**reminder_data)
 
-        log_action(
-            supabase=supabase,
-            user_id=user_id,
-            action="CREATE_REMINDER",
-            details=f"{name} on day {day} ({frequency})"
-        )
+    log_action(
+        user_id=user_id,
+        action="CREATE_REMINDER",
+        details=f"{name} on day {day} ({frequency})"
+    )
 
-        return reminder
-    except Exception as e:
-        raise RuntimeError(f"Failed to create reminder: {str(e)}")
+    return reminder
 
 
 # -----------------------------
 # Get All Reminders for User
 # -----------------------------
 def get_reminders(
-    supabase: Client,
     user_id: int
 ) -> List[Reminder]:
     """
     Fetch all reminders for a user.
     """
-    try:
-        response = (
-            supabase.table("reminders")
-            .select("*")
-            .eq("user_id", user_id)
-            .execute()
+    with get_db_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT id, user_id, name, day, frequency, created_at
+            FROM reminders
+            WHERE user_id = %s
+            """,
+            (user_id,)
         )
-        return [Reminder(**row) for row in response.data]
-    except Exception as e:
-        raise RuntimeError(f"Failed to get reminders: {str(e)}")
+        
+        rows = cursor.fetchall()
+        reminders = []
+        for row in rows:
+            reminders.append(Reminder(
+                id=row[0],
+                user_id=row[1],
+                name=row[2],
+                day=row[3],
+                frequency=row[4],
+                created_at=row[5]
+            ))
+        
+        return reminders
 
 
 # -----------------------------
 # Get Single Reminder
 # -----------------------------
 def get_reminder_by_id(
-    supabase: Client,
     reminder_id: int,
     user_id: int
 ) -> Optional[Reminder]:
     """
     Fetch a specific reminder by ID.
     """
-    try:
-        response = (
-            supabase.table("reminders")
-            .select("*")
-            .eq("id", reminder_id)
-            .eq("user_id", user_id)
-            .execute()
+    with get_db_cursor(commit=False) as cursor:
+        cursor.execute(
+            """
+            SELECT id, user_id, name, day, frequency, created_at
+            FROM reminders
+            WHERE id = %s AND user_id = %s
+            """,
+            (reminder_id, user_id)
         )
         
-        if not response.data:
+        row = cursor.fetchone()
+        
+        if not row:
             return None
         
-        return Reminder(**response.data[0])
-    except Exception as e:
-        return None
+        return Reminder(
+            id=row[0],
+            user_id=row[1],
+            name=row[2],
+            day=row[3],
+            frequency=row[4],
+            created_at=row[5]
+        )
 
 
 # -----------------------------
 # Update Reminder
 # -----------------------------
 def update_reminder(
-    supabase: Client,
     reminder_id: int,
     user_id: int,
     day: Optional[int] = None,
@@ -117,7 +140,7 @@ def update_reminder(
     Update an existing reminder.
     """
 
-    reminder = get_reminder_by_id(supabase, reminder_id, user_id)
+    reminder = get_reminder_by_id(reminder_id, user_id)
 
     if not reminder:
         raise ValueError("Reminder not found")
@@ -135,37 +158,47 @@ def update_reminder(
     if not update_data:
         return reminder
 
-    try:
-        response = (
-            supabase.table("reminders")
-            .update(update_data)
-            .eq("id", reminder_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
+    with get_db_cursor() as cursor:
+        # Build dynamic update query
+        set_clauses = ", ".join([f"{k} = %s" for k in update_data.keys()])
+        values = list(update_data.values())
+        values.extend([reminder_id, user_id])
         
-        if not response.data:
+        query = f"""
+            UPDATE reminders
+            SET {set_clauses}
+            WHERE id = %s AND user_id = %s
+            RETURNING id, user_id, name, day, frequency, created_at
+        """
+        
+        cursor.execute(query, values)
+        
+        row = cursor.fetchone()
+        if not row:
             raise RuntimeError("Failed to update reminder")
         
-        updated_reminder = Reminder(**response.data[0])
-
-        log_action(
-            supabase=supabase,
-            user_id=user_id,
-            action="UPDATE_REMINDER",
-            details=f"Reminder {reminder_id} updated"
+        updated_reminder = Reminder(
+            id=row[0],
+            user_id=row[1],
+            name=row[2],
+            day=row[3],
+            frequency=row[4],
+            created_at=row[5]
         )
 
-        return updated_reminder
-    except Exception as e:
-        raise RuntimeError(f"Failed to update reminder: {str(e)}")
+    log_action(
+        user_id=user_id,
+        action="UPDATE_REMINDER",
+        details=f"Reminder {reminder_id} updated"
+    )
+
+    return updated_reminder
 
 
 # -----------------------------
 # Delete Reminder
 # -----------------------------
 def delete_reminder(
-    supabase: Client,
     reminder_id: int,
     user_id: int
 ) -> bool:
@@ -173,27 +206,25 @@ def delete_reminder(
     Delete a reminder.
     """
 
-    reminder = get_reminder_by_id(supabase, reminder_id, user_id)
+    reminder = get_reminder_by_id(reminder_id, user_id)
 
     if not reminder:
         return False
 
-    try:
-        delete_response = (
-            supabase.table("reminders")
-            .delete()
-            .eq("id", reminder_id)
-            .eq("user_id", user_id)
-            .execute()
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            """
+            DELETE FROM reminders
+            WHERE id = %s AND user_id = %s
+            """,
+            (reminder_id, user_id)
         )
 
-        log_action(
-            supabase=supabase,
-            user_id=user_id,
-            action="DELETE_REMINDER",
-            details=f"Reminder {reminder_id} deleted"
-        )
+    log_action(
+        user_id=user_id,
+        action="DELETE_REMINDER",
+        details=f"Reminder {reminder_id} deleted"
+    )
 
-        return True
-    except Exception as e:
-        raise RuntimeError(f"Failed to delete reminder: {str(e)}")
+    return True
+
