@@ -4,6 +4,8 @@ VoxFin is a **voice‑first personal finance assistant** that enables users to m
 
 The project is built with a **clean frontend–backend separation**, making it scalable, testable, and production‑ready.
 
+This repo only contains the backend, for frontend please visit [this repo.](https://github.com/GIRISHKUMAR020106/VoiceDrivenUI)
+
 ---
 
 ## 🚀 What VoxFin Does
@@ -143,6 +145,20 @@ http://localhost:5173
 2. Girish Kumar S - https://github.com/GIRISH020106
 3. Riteesh T M - https://github.com/RiteeshTM
 4. Nehan G R M - https://github.com/NEHANGRM
+
+---
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+
 
 
 
