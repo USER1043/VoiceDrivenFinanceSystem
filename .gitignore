@@ -1,14 +1,15 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 
-# Virtual environments
-.venv
-*.sh
+# Node
+node_modules/
+web/dist/
+
+# Local config and data
 .env
-audio_inputs/
-audio_outputs/
+backups/
