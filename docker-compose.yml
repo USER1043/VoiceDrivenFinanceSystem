@@ -1,5 +1,5 @@
-# Local:      docker compose up --build            → http://localhost:8000
-# Production: docker compose --profile tunnel up -d --build   (see docs/DEPLOY.md)
+# Local development / self-hosting: docker compose up --build → http://localhost:8000
+# Production runs on Render + Neon instead (see render.yaml and docs/DEPLOY.md).
 name: voxfin
 
 services:
@@ -30,7 +30,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8000:8000"  # never exposed publicly; the tunnel reaches it over Docker's network
+      - "127.0.0.1:8000:8000"
 
   backup:
     image: postgres:16-alpine
@@ -48,16 +48,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    profiles: ["tunnel"]
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}  # from .env; the tunnel refuses to start without it
-    depends_on:
-      - app
 
 volumes:
   pgdata:

@@ -12,9 +12,9 @@ Built for one person's real daily use (INR, UPI-first), deployed on free infrast
 |---|---|
 | API | FastAPI · SQLAlchemy 2 · Alembic · Postgres 16 · Pydantic Settings |
 | Web | React · Vite · TypeScript · TanStack Query · installable PWA |
-| Auth | Cloudflare Access in front, JWT verified again in the API |
+| Auth | Password login (argon2) with hashed, revocable cookie sessions |
 | Speech / AI (M2) | Groq Whisper + Groq LLM tool calling, Gemini fallback (free tiers) |
-| Deploy | One Docker image (API serves the built PWA) + Postgres + nightly backups, via `docker compose` |
+| Deploy | One Docker image (API serves the built PWA) on Render's free tier, Neon free Postgres, nightly encrypted backups via GitHub Actions |
 
 ## Layout
 
@@ -23,10 +23,11 @@ api/            FastAPI app, Alembic migrations, tests
   app/          config, db, models, auth, seed, routers
   migrations/   the only source of schema truth
 web/            React PWA
-ops/            backup script
+ops/            local backup script (docker compose)
 docs/           plan and deployment guide
 Dockerfile      builds web + api into one image
-docker-compose.yml
+docker-compose.yml   local stack: db, app, backups
+render.yaml          Render deploy blueprint
 ```
 
 ## Run it locally
@@ -35,6 +36,9 @@ Prerequisites: Docker, [uv](https://docs.astral.sh/uv/), Node 22.
 
 ```bash
 cp .env.example .env            # set OWNER_EMAIL and POSTGRES_PASSWORD (+ DATABASE_URL to match)
+
+# Local runs use AUTH_MODE=dev (no login). To try the login screen locally, set
+# AUTH_MODE=password and OWNER_PASSWORD_HASH from `cd api && uv run python -m app.auth hash-password`.
 
 # Option A: everything in Docker, production-like → http://localhost:8000
 docker compose up --build

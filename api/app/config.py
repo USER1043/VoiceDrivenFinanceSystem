@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,28 +13,40 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     database_url: str = "postgresql+psycopg://voxfin:voxfin@localhost:5432/voxfin"
 
-    # The single owner of this instance. Seeded on startup and the only email allowed in.
+    # The single owner of this instance. Seeded on startup.
     owner_email: str = "me@example.com"
     timezone: str = "Asia/Kolkata"
 
     # "dev" trusts every request as the owner (local only).
-    # "cloudflare" requires a valid Cloudflare Access JWT for the owner's email.
-    auth_mode: Literal["dev", "cloudflare"] = "dev"
-    cf_access_team_domain: str = ""  # e.g. "myteam.cloudflareaccess.com"
-    cf_access_aud: str = ""  # Application Audience (AUD) tag
+    # "password" requires logging in with the owner's password (required in production).
+    auth_mode: Literal["dev", "password"] = "dev"
+    # Argon2 hash of the owner's password; generate with `python -m app.auth hash-password`.
+    owner_password_hash: str = ""
+    session_days: int = 90
 
     # Directory with the built PWA (web/dist). Served at "/" when present.
     web_dist_dir: str = "../web/dist"
 
+    @field_validator("database_url")
+    @classmethod
+    def _use_psycopg_driver(cls, url: str) -> str:
+        # Hosted Postgres (Neon, Render) hands out postgres:// URLs; SQLAlchemy needs the driver.
+        for prefix in ("postgres://", "postgresql://"):
+            if url.startswith(prefix):
+                return "postgresql+psycopg://" + url.removeprefix(prefix)
+        return url
+
     @model_validator(mode="after")
     def _check_auth(self) -> "Settings":
-        if self.environment == "production" and self.auth_mode != "cloudflare":
-            raise ValueError("AUTH_MODE must be 'cloudflare' in production")
-        if self.auth_mode == "cloudflare" and not (
-            self.cf_access_team_domain and self.cf_access_aud
-        ):
-            raise ValueError("CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are required")
+        if self.environment == "production" and self.auth_mode != "password":
+            raise ValueError("AUTH_MODE must be 'password' in production")
+        if self.auth_mode == "password" and not self.owner_password_hash.startswith("$argon2"):
+            raise ValueError("OWNER_PASSWORD_HASH must be an argon2 hash in password mode")
         return self
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.environment == "production"
 
 
 @lru_cache

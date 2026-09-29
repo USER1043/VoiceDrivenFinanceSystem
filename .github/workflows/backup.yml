@@ -1,0 +1,57 @@
+name: Backup
+
+# Nightly encrypted pg_dump of the production database (Neon), kept as a workflow artifact.
+# Needs repository secrets BACKUP_DATABASE_URL (Neon URL, postgres://...) and
+# BACKUP_PASSPHRASE (long random string, stored in your password manager too).
+# Restore steps: docs/DEPLOY.md.
+
+on:
+  schedule:
+    - cron: "30 21 * * *"  # 03:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$PASSPHRASE" ]; then
+            echo "::notice::Backup secrets not configured; skipping."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dump, compress and encrypt
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+          # Newest pg_dump can dump any older server version.
+          docker run --rm -e DATABASE_URL postgres:18-alpine \
+              sh -c 'pg_dump --no-owner --clean --if-exists "$DATABASE_URL"' \
+            | gzip \
+            | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+                  --passphrase-fd 3 3<<<"$PASSPHRASE" -o "voxfin-$stamp.sql.gz.gpg"
+          # Fail loudly if the dump is suspiciously small (e.g. connection error).
+          test "$(stat -c %s "voxfin-$stamp.sql.gz.gpg")" -gt 1000
+
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          name: voxfin-backup-${{ env.STAMP }}
+          path: voxfin-*.sql.gz.gpg
+          retention-days: 30
+          if-no-files-found: error

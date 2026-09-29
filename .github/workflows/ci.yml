@@ -67,6 +67,7 @@ jobs:
           cp .env.example .env
           docker compose up -d --build --wait db app
           curl --fail --silent http://localhost:8000/api/health
+          curl --fail --silent http://localhost:8000/api/health/db
           curl --fail --silent http://localhost:8000/api/me
           curl --fail --silent http://localhost:8000/ | grep -q "<title>VoxFin</title>"
       - if: failure()

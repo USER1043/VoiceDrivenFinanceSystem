@@ -9,7 +9,15 @@ from app.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
-    return create_engine(get_settings().database_url, pool_pre_ping=True)
+    # Small pool (one user). pre_ping + recycle because serverless Postgres (Neon) drops idle
+    # connections when it scales to zero after 5 minutes.
+    return create_engine(
+        get_settings().database_url,
+        pool_size=3,
+        max_overflow=2,
+        pool_pre_ping=True,
+        pool_recycle=240,
+    )
 
 
 @lru_cache

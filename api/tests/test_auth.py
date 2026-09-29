@@ -1,87 +1,138 @@
-import time
+from datetime import UTC, datetime, timedelta
 
-import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
+from sqlalchemy import select, update
 
 from app import auth
 from app.config import get_settings
+from app.models import LoginSession
 from tests.conftest import OWNER, make_settings
 
-TEAM = "example.cloudflareaccess.com"
-AUD = "test-aud"
-KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+PASSWORD = "correct horse battery staple"
+PASSWORD_HASH = auth.hash_password(PASSWORD)
 
 
-class _FakeJWKClient:
-    def get_signing_key_from_jwt(self, token):
-        return jwt.PyJWK.from_dict(
-            {**jwt.algorithms.RSAAlgorithm.to_jwk(KEY.public_key(), as_dict=True), "alg": "RS256"}
-        )
-
-
-def _token(email=OWNER, aud=AUD, iss=f"https://{TEAM}", exp_in=300, key=KEY):
-    now = int(time.time())
-    return jwt.encode(
-        {"email": email, "aud": aud, "iss": iss, "iat": now, "exp": now + exp_in},
-        key,
-        algorithm="RS256",
-    )
+@pytest.fixture(autouse=True)
+def _reset_limiter():
+    auth.login_limiter.reset()
+    yield
+    auth.login_limiter.reset()
 
 
 @pytest.fixture
-def cf_client(client, monkeypatch):
-    settings = make_settings(auth_mode="cloudflare", cf_access_team_domain=TEAM, cf_access_aud=AUD)
+def pw_client(client):
+    settings = make_settings(auth_mode="password", owner_password_hash=PASSWORD_HASH)
     client.app.dependency_overrides[get_settings] = lambda: settings
-    monkeypatch.setattr(auth, "_jwk_client", lambda team: _FakeJWKClient())
     return client
 
 
-def _me(c, token=None):
-    headers = {auth.CF_JWT_HEADER: token} if token else {}
-    return c.get("/api/me", headers=headers)
+def _login(c, password=PASSWORD):
+    return c.post("/api/auth/login", json={"password": password})
 
 
 def test_dev_mode_trusts_the_owner(client, seeded):
-    response = _me(client)
+    response = client.get("/api/me")
     assert response.status_code == 200
-    assert response.json() == {"email": OWNER, "timezone": "Asia/Kolkata"}
+    assert response.json() == {"email": OWNER, "timezone": "Asia/Kolkata", "can_log_out": False}
 
 
 def test_owner_must_be_seeded(client):
-    assert _me(client).status_code == 503
+    assert client.get("/api/me").status_code == 503
 
 
-def test_valid_cloudflare_token(cf_client, seeded):
-    assert _me(cf_client, _token()).status_code == 200
+def test_password_mode_requires_login(pw_client, seeded):
+    assert pw_client.get("/api/me").status_code == 401
 
 
-def test_email_is_case_insensitive(cf_client, seeded):
-    assert _me(cf_client, _token(email=OWNER.upper())).status_code == 200
+def test_login_sets_http_only_cookie_and_stores_only_a_hash(pw_client, seeded):
+    response = _login(pw_client)
+    assert response.status_code == 204
+    cookie = response.headers["set-cookie"]
+    assert "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie
+    token = pw_client.cookies[auth.SESSION_COOKIE]
+    stored = seeded.scalars(select(LoginSession.token_hash)).all()
+    assert token not in stored
+    assert len(stored) == 1
+
+    me = pw_client.get("/api/me")
+    assert me.status_code == 200
+    assert me.json()["can_log_out"] is True
 
 
-@pytest.mark.parametrize(
-    ("token_kwargs", "status"),
-    [
-        (None, 401),
-        ({"aud": "someone-else"}, 401),
-        ({"iss": "https://evil.example.com"}, 401),
-        ({"exp_in": -60}, 401),
-        ({"key": rsa.generate_private_key(public_exponent=65537, key_size=2048)}, 401),
-        ({"email": "intruder@example.com"}, 403),
-    ],
-    ids=["missing", "wrong-aud", "wrong-iss", "expired", "wrong-key", "not-owner"],
-)
-def test_rejected_tokens(cf_client, seeded, token_kwargs, status):
-    token = None if token_kwargs is None else _token(**token_kwargs)
-    assert _me(cf_client, token).status_code == status
+def test_wrong_password(pw_client, seeded):
+    assert _login(pw_client, "nope").status_code == 401
+    assert auth.SESSION_COOKIE not in pw_client.cookies
 
 
-def test_production_requires_cloudflare_mode():
+def test_logout_revokes_the_session(pw_client, seeded):
+    _login(pw_client)
+    token = pw_client.cookies[auth.SESSION_COOKIE]
+    assert pw_client.post("/api/auth/logout").status_code == 204
+    assert seeded.scalars(select(LoginSession)).all() == []
+    pw_client.cookies.set(auth.SESSION_COOKIE, token)  # replaying the old cookie fails
+    assert pw_client.get("/api/me").status_code == 401
+
+
+def test_expired_session_is_rejected(pw_client, seeded):
+    _login(pw_client)
+    seeded.execute(update(LoginSession).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
+    assert pw_client.get("/api/me").status_code == 401
+
+
+def test_forged_cookie_is_rejected(pw_client, seeded):
+    pw_client.cookies.set(auth.SESSION_COOKIE, "made-up")
+    assert pw_client.get("/api/me").status_code == 401
+
+
+def test_repeated_failures_are_rate_limited(pw_client, seeded):
+    for _ in range(auth.login_limiter.max_failures):
+        assert _login(pw_client, "wrong").status_code == 401
+    blocked = _login(pw_client)  # even the right password waits
+    assert blocked.status_code == 429
+    assert int(blocked.headers["retry-after"]) > 0
+
+
+def test_existing_session_survives_rate_limit(pw_client, seeded):
+    _login(pw_client)
+    for _ in range(auth.login_limiter.max_failures):
+        auth.login_limiter.record_failure()
+    assert pw_client.get("/api/me").status_code == 200
+
+
+def test_cross_origin_writes_are_blocked(pw_client, seeded):
+    response = pw_client.post(
+        "/api/auth/login", json={"password": PASSWORD}, headers={"Origin": "https://evil.example"}
+    )
+    assert response.status_code == 403
+    same_origin = pw_client.post(
+        "/api/auth/login", json={"password": PASSWORD}, headers={"Origin": "http://testserver"}
+    )
+    assert same_origin.status_code == 204
+
+
+def test_secure_cookie_in_production(client, seeded):
+    settings = make_settings(
+        environment="production", auth_mode="password", owner_password_hash=PASSWORD_HASH
+    )
+    client.app.dependency_overrides[get_settings] = lambda: settings
+    assert "Secure" in _login(client).headers["set-cookie"]
+
+
+def test_production_requires_password_mode():
     with pytest.raises(ValueError, match="AUTH_MODE"):
         make_settings(environment="production")
 
 
-def test_cloudflare_mode_requires_team_and_aud():
-    with pytest.raises(ValueError, match="CF_ACCESS"):
-        make_settings(auth_mode="cloudflare")
+def test_password_mode_requires_a_hash():
+    with pytest.raises(ValueError, match="OWNER_PASSWORD_HASH"):
+        make_settings(auth_mode="password", owner_password_hash="plaintext")
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["postgres://u:p@host/db?sslmode=require", "postgresql://u:p@host/db?sslmode=require"],
+)
+def test_hosted_database_urls_get_the_psycopg_driver(url):
+    settings = make_settings(database_url=url)
+    assert settings.database_url == "postgresql+psycopg://u:p@host/db?sslmode=require"

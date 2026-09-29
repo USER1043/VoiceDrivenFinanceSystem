@@ -18,7 +18,8 @@ fresh codebase; nothing from V1 is carried over except the lessons below.
 | Currency | INR only. Amounts stored as integer **paise** (`BIGINT`), never floats. |
 | Payment mix | Mostly UPI. Default accounts: **UPI (bank)**, Cash, Card. |
 | AI / speech | Free hosted tiers with fallbacks (see §4). No self-hosted models, no torch. |
-| Hosting | Single-origin deploy with `docker compose` (see §6). Oracle Always Free VM preferred; Render + Neon is the fallback. *Oracle sign-up still pending.* |
+| Hosting | **Render free web service + Neon free Postgres** on `*.onrender.com` (no domain needed, see §6). Oracle VM + domain is a later upgrade. |
+| Auth | In-app password login (argon2 hash) with 90-day cookie sessions stored hashed in Postgres. |
 | Timeline | No deadline; free-time project. Each milestone must leave the app usable. |
 
 ## 2. Lessons from V1 (what not to repeat)
@@ -27,7 +28,7 @@ fresh codebase; nothing from V1 is carried over except the lessons below.
 - NLU stack of FLAN-T5 + regex + keywords + hardcoded categories that fought each other → **one** LLM tool-calling layer with a rule-based fallback, measured by an eval set.
 - Schema defined in three places (Alembic, `init_db()`, Pydantic) that didn't match → **Alembic is the only source of schema truth**.
 - Dead modules (Redis, auth, TTS, validation) and unused dependencies → nothing lands without a caller and a test.
-- `user_id` from the query string → auth at the edge (Cloudflare Access) **and** verified in the API.
+- `user_id` from the query string → every endpoint requires a logged-in session.
 - Floats for money, Python-side sums, N+1 queries → integer paise, SQL aggregates.
 - Tests that didn't run → CI on every push; a red CI blocks merging.
 
@@ -100,13 +101,14 @@ PWA (React + Vite + TS)
   Sync is deliberate: one user, simpler code, FastAPI runs sync endpoints in a threadpool.
 - **Frontend:** React + Vite + TypeScript, TanStack Query, `vite-plugin-pwa`.
 - **Single origin:** the API container also serves the built frontend, so there
-  is one hostname, one Cloudflare Access app, no CORS.
+  is one hostname, cookie auth works without CORS, and writes from other origins are rejected.
 
 ### Data model
 
 | Table | Key columns |
 |---|---|
 | `users` | email, timezone (`Asia/Kolkata`) |
+| `login_sessions` | token_hash (SHA-256 of the cookie token), user_agent, expires_at |
 | `accounts` | name, kind (`upi`/`cash`/`card`/`bank`), is_default, archived |
 | `categories` | name, kind (`expense`/`income`), parent_id, aliases[], archived |
 | `transactions` | kind, amount_paise, occurred_at, account_id, category_id, merchant, note, source (`voice`/`manual`/`import`), raw_text, external_ref (UPI ref for import dedupe) |
@@ -117,24 +119,26 @@ PWA (React + Vite + TS)
 
 ## 6. Deployment (free)
 
-**Preferred: Oracle Cloud Always Free ARM VM**
-
 ```
-Cloudflare Access (email OTP login)  →  Cloudflare Tunnel (no open ports)
-                                               ↓
-                    docker compose: app (FastAPI + built PWA) · postgres · backup
+phone ──HTTPS──► Render free web service (one Docker image: API + PWA, password login)
+                        └──TLS──► Neon free Postgres (Singapore, scales to zero)
+GitHub Actions ──nightly──► encrypted pg_dump → artifact (30 days)
 ```
 
-- Never sleeps → no cold start on voice commands.
-- Cloudflare Access gives real login with zero auth code; the API **also**
-  verifies the `Cf-Access-Jwt-Assertion` JWT and the allowed email
-  (defence in depth, in case the tunnel is bypassed).
-- Nightly `pg_dump` kept locally (14 days); offsite copy (Cloudflare R2 or
-  Google Drive) added in M4. A backup is not a backup until a restore is tested.
-- Risk: Oracle may reclaim idle Always Free instances. Daily use + backups cover it.
-
-**Fallback: Render (free web service) + Neon (free Postgres)** — same Docker
-image; accept ~30–60 s cold starts after idle.
+- **No domain needed:** Render provides `https://<name>.onrender.com`.
+- **Auth:** password + `HttpOnly`, `Secure`, `SameSite=Lax` session cookie; login is
+  rate-limited; cross-origin writes are rejected.
+- **Cold starts:** Render sleeps after 15 min idle (~30–60 s wake). Optional free keep-warm
+  ping (cron-job.org) during waking hours fits in the 750 free hours.
+- **Neon budget:** 100 compute-hours/month, so nothing frequent may query the database.
+  `/api/health` (Render health check, keep-warm ping) is DB-free; `/api/health/db` is for
+  manual checks.
+- **Backups:** nightly GitHub Actions `pg_dump`, GPG-encrypted, kept 30 days; restore
+  procedure in `docs/DEPLOY.md` and tested.
+- **Deploys:** `render.yaml` blueprint, auto-deploy from `main` only after CI passes.
+- **Scheduled jobs (M4 reminders):** Render free has no cron, so a GitHub Actions schedule
+  calls a token-protected endpoint.
+- **Upgrade path:** Oracle Always Free VM + Cloudflare Tunnel once there is a domain; same image.
 
 ## 7. Engineering standards
 
@@ -151,11 +155,11 @@ image; accept ~30–60 s cold starts after idle.
 
 | # | Milestone | Done when |
 |---|---|---|
-| **M0** | Foundation | Monorepo, CI green, compose up locally, schema + migrations + seed, health check, Cloudflare Access verification, PWA shell served from the API. Deployed once hosting is chosen. |
+| **M0** | Foundation | Monorepo, CI green, compose up locally, schema + migrations + seed, health checks, password login, PWA shell served from the API, Render + Neon deploy, encrypted nightly backups. |
 | **M1** | Manual tracker | CRUD for transactions/categories/accounts/budgets; dashboard; usable daily without voice. |
 | **M2** | Voice entry | Record → Groq STT → tool call → confirm card → saved; fallback chain tested; eval set ≥ 90%. |
 | **M3** | Queries + budgets | Spending questions answered correctly; budget alerts. |
-| **M4** | Reminders + polish | Recurring rules, Web Push reminders, voice undo/edit, offsite backups + tested restore. |
+| **M4** | Reminders + polish | Recurring rules, Web Push reminders (triggered by a GitHub Actions schedule), voice undo/edit. |
 | **M5** | Statement import | UPI/bank statement import with auto-categorisation and dedupe. |
 
 Building M1 before voice is deliberate: the app is useful early, and real
@@ -163,7 +167,7 @@ entries become the eval data for M2.
 
 ## 9. Open items
 
-- [ ] Oracle Cloud sign-up (decides §6 primary vs fallback).
+- [ ] Neon + Render accounts; deploy following `docs/DEPLOY.md`.
+- [ ] Backup secrets in GitHub; run one backup and one test restore.
 - [ ] Get API keys: Groq console, Google AI Studio (needed from M2).
-- [ ] Cloudflare account + domain (a free `*.trycloudflare.com` quick tunnel is fine for testing, but Access needs a domain on Cloudflare).
 - [ ] Which bank(s) the statements come from (M5 parser formats).
