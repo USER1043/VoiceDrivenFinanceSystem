@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useState } from 'react'
-import { apiPost } from './api'
+import { api } from './api'
 
 export default function Login() {
   const queryClient = useQueryClient()
   const [password, setPassword] = useState('')
   const login = useMutation({
-    mutationFn: () => apiPost('/auth/login', { password }),
+    mutationFn: () => api.post('/auth/login', { password }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me'] }),
   })
 

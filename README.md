@@ -3,7 +3,9 @@
 A voice-first personal finance tracker: say *"paid 180 for auto"*, confirm the card, done.
 Built for one person's real daily use (INR, UPI-first), deployed on free infrastructure.
 
-> **Status: V2, milestone M0 (foundation).** See [`docs/V2_PLAN.md`](docs/V2_PLAN.md) for the
+> **Status: V2, milestone M1 (manual tracker):** log, edit and search transactions, accounts,
+> categories with aliases, monthly budgets, a dashboard and CSV export. Voice entry is M2.
+> See [`docs/V2_PLAN.md`](docs/V2_PLAN.md) for the
 > full plan and milestones. The original hackathon code is archived at the `v1-hackathon` tag.
 
 ## Stack
@@ -61,7 +63,7 @@ TEST_DATABASE_URL=postgresql+psycopg://voxfin:<password>@localhost:5432/voxfin_t
 uv run alembic check          # models and migrations agree
 
 cd ../web
-npm run lint && npm run build
+npm run lint && npm test && npm run build
 ```
 
 Tests run against a real Postgres database (create `voxfin_test` first:

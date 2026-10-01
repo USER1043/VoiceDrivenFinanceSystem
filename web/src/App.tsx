@@ -1,27 +1,74 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, apiGet, apiPost, type Me } from './api'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { ApiError, api, type Me, type Transaction } from './api'
+import TransactionForm from './components/TransactionForm'
+import { currentMonth } from './dates'
 import Login from './Login'
+import Budgets from './pages/Budgets'
+import Dashboard from './pages/Dashboard'
+import Settings from './pages/Settings'
+import Transactions from './pages/Transactions'
+
+type Editing = { transaction?: Transaction } | null
+
+function Shell({ me }: { me: Me }) {
+  const [month, setMonth] = useState(currentMonth())
+  const [editing, setEditing] = useState<Editing>(null)
+  const edit = (transaction: Transaction) => setEditing({ transaction })
+
+  return (
+    <>
+      <main className="shell">
+        <Routes>
+          <Route path="/" element={<Dashboard month={month} setMonth={setMonth} onEdit={edit} />} />
+          <Route path="/transactions" element={<Transactions month={month} setMonth={setMonth} onEdit={edit} />} />
+          <Route path="/budgets" element={<Budgets />} />
+          <Route path="/settings" element={<Settings me={me} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+
+      <button type="button" className="fab" aria-label="Add transaction" onClick={() => setEditing({})}>
+        +
+      </button>
+
+      <nav className="tabbar" aria-label="Main">
+        <NavLink to="/" end>
+          Home
+        </NavLink>
+        <NavLink to="/transactions">Transactions</NavLink>
+        <NavLink to="/budgets">Budgets</NavLink>
+        <NavLink to="/settings">Settings</NavLink>
+      </nav>
+
+      {editing && <TransactionForm transaction={editing.transaction} onClose={() => setEditing(null)} />}
+    </>
+  )
+}
 
 export default function App() {
-  const queryClient = useQueryClient()
   const me = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiGet<Me>('/me'),
+    queryFn: () => api.get<Me>('/me'),
     retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
-  })
-  const logout = useMutation({
-    mutationFn: () => apiPost('/auth/logout'),
-    onSuccess: () => queryClient.resetQueries({ queryKey: ['me'] }),
   })
   const needsLogin = me.error instanceof ApiError && me.error.status === 401
 
+  if (me.isSuccess) {
+    return (
+      <BrowserRouter>
+        <Shell me={me.data} />
+      </BrowserRouter>
+    )
+  }
+
   return (
     <main className="shell">
-      <header>
+      <header className="brand">
         <h1>VoxFin</h1>
         <p className="muted">Voice-first personal finance</p>
       </header>
-
       {me.isPending && (
         <section className="card">
           <p className="muted">Connecting… (the server may take up to a minute to wake up)</p>
@@ -33,22 +80,6 @@ export default function App() {
           <p className="error">Can't reach the API: {me.error.message}</p>
         </section>
       )}
-      {me.isSuccess && (
-        <section className="card row">
-          <p>
-            Signed in as <strong>{me.data.email}</strong>
-          </p>
-          {me.data.can_log_out && (
-            <button className="secondary" onClick={() => logout.mutate()}>
-              Sign out
-            </button>
-          )}
-        </section>
-      )}
-
-      <p className="muted small">
-        M0 foundation. Transactions, budgets and voice entry arrive in M1–M2.
-      </p>
     </main>
   )
 }
