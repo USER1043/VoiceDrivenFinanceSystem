@@ -39,7 +39,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (response.status === 204 ? undefined : await response.json()) as T
 }
 
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch(`/api${path}`, { method: 'POST', credentials: 'same-origin', body: form })
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`
+    try {
+      message = describe(((await response.json()) as { detail?: Detail }).detail, message)
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(response.status, message)
+  }
+  return (await response.json()) as T
+}
+
 export const api = {
+  upload,
   get: <T>(path: string) => request<T>('GET', path),
   post: <T = void>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T = void>(path: string, body?: unknown) => request<T>('PUT', path, body),
@@ -105,4 +120,43 @@ export interface Summary {
   by_category: { category_id: number | null; name: string; spent_paise: number }[]
   budgets: { category_id: number; name: string; amount_paise: number; spent_paise: number }[]
   daily: { day: string; expense_paise: number }[]
+}
+
+export interface VoiceStatus {
+  server_stt: boolean
+  llm: string[]
+}
+
+export interface TransactionDraft {
+  kind: Kind
+  amount_paise: number
+  category_id: number | null
+  account_id: number
+  occurred_at: string
+  merchant: string | null
+  note: string | null
+}
+
+export interface BudgetDraft {
+  category_id: number
+  amount_paise: number
+}
+
+export type PendingAction =
+  | { id: number; tool: 'add_transaction'; data: TransactionDraft; expires_at: string }
+  | { id: number; tool: 'set_budget'; data: BudgetDraft; expires_at: string }
+
+export interface CommandOut {
+  status: 'proposal' | 'clarify' | 'unsupported'
+  transcript: string
+  message: string
+  parser: string
+  action: PendingAction | null
+}
+
+export interface ConfirmOut {
+  tool: 'add_transaction' | 'set_budget'
+  message: string
+  transaction: Transaction | null
+  budget: Budget | null
 }

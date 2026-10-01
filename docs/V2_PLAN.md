@@ -67,7 +67,7 @@ implementations. Model names live in config, not code, because free tiers change
 
 | Role | Primary | Fallback(s) |
 |---|---|---|
-| Speech → text | Groq `whisper-large-v3-turbo` (free tier, ~2,000 req/day) | Browser Web Speech API (client side) |
+| Speech → text | Groq `whisper-large-v3-turbo` (free tier, ~2,000 req/day) | Browser speech recognition (used automatically when no Groq key is set) |
 | Text → tool call | Groq open models (e.g. `gpt-oss-20b`) with tool calling | Gemini Flash-Lite (free tier) → rule-based parser |
 | Text → speech | Browser `speechSynthesis` (on-device, free) | — |
 
@@ -145,8 +145,9 @@ GitHub Actions ──nightly──► encrypted pg_dump → artifact (30 days)
 - Monorepo: `api/`, `web/`, `docs/`, `ops/`.
 - CI (GitHub Actions): ruff + mypy + pytest (against real Postgres) for `api/`;
   oxlint + tsc + build for `web/`; a Docker job builds and boots the production image.
-- NLU **eval set** (`api/evals/commands.yaml`): ~150 real phrases → expected tool
-  call. Runs in CI with recorded responses; live run on demand. Target ≥ 90%.
+- NLU **eval set** (`api/evals/commands.jsonl`): real-style phrases → expected result.
+  The rule parser is gated in CI (≥ 95%); LLM providers run live on demand
+  (`python -m evals.run --provider groq`). Add your own misheard phrases as they come up.
 - `.env.example` documents every setting; nothing reads `os.environ` outside `config.py`.
 - Migrations only through Alembic; `alembic upgrade head` runs on container start.
 - Money helpers in one module; no `float` anywhere near amounts.
@@ -157,7 +158,7 @@ GitHub Actions ──nightly──► encrypted pg_dump → artifact (30 days)
 |---|---|---|
 | **M0** ✅ | Foundation | Monorepo, CI green, compose up locally, schema + migrations + seed, health checks, password login, PWA shell served from the API, Render + Neon deploy, encrypted nightly backups. |
 | **M1** ✅ | Manual tracker | CRUD for transactions/categories/accounts/budgets; dashboard; CSV export; usable daily without voice. |
-| **M2** | Voice entry | Record → Groq STT → tool call → confirm card → saved; fallback chain tested; eval set ≥ 90%. |
+| **M2** ✅ | Voice entry | Record → Groq STT → tool call → confirm card → saved; fallback chain tested; eval set ≥ 90%. |
 | **M3** | Queries + budgets | Spending questions answered correctly; budget alerts. |
 | **M4** | Reminders + polish | Recurring rules, Web Push reminders (triggered by a GitHub Actions schedule), voice undo/edit. |
 | **M5** | Statement import | UPI/bank statement import with auto-categorisation and dedupe. |
@@ -169,5 +170,5 @@ entries become the eval data for M2.
 
 - [ ] Neon + Render accounts; deploy following `docs/DEPLOY.md`.
 - [ ] Backup secrets in GitHub; run one backup and one test restore.
-- [ ] Get API keys: Groq console, Google AI Studio (needed from M2).
+- [ ] Optional: API keys from Groq console and Google AI Studio (voice works without them).
 - [ ] Which bank(s) the statements come from (M5 parser formats).

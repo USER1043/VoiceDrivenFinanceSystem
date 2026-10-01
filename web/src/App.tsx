@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ApiError, api, type Me, type Transaction } from './api'
 import TransactionForm from './components/TransactionForm'
+import VoiceSheet from './components/VoiceSheet'
 import { currentMonth } from './dates'
 import Login from './Login'
 import Budgets from './pages/Budgets'
@@ -15,6 +16,7 @@ type Editing = { transaction?: Transaction } | null
 function Shell({ me }: { me: Me }) {
   const [month, setMonth] = useState(currentMonth())
   const [editing, setEditing] = useState<Editing>(null)
+  const [voice, setVoice] = useState(false)
   const edit = (transaction: Transaction) => setEditing({ transaction })
 
   return (
@@ -29,9 +31,14 @@ function Shell({ me }: { me: Me }) {
         </Routes>
       </main>
 
-      <button type="button" className="fab" aria-label="Add transaction" onClick={() => setEditing({})}>
-        +
-      </button>
+      <div className="fabs">
+        <button type="button" className="fab-small" aria-label="Add transaction manually" onClick={() => setEditing({})}>
+          +
+        </button>
+        <button type="button" className="fab" aria-label="Speak a transaction" onClick={() => setVoice(true)}>
+          🎙
+        </button>
+      </div>
 
       <nav className="tabbar" aria-label="Main">
         <NavLink to="/" end>
@@ -42,6 +49,7 @@ function Shell({ me }: { me: Me }) {
         <NavLink to="/settings">Settings</NavLink>
       </nav>
 
+      {voice && <VoiceSheet onClose={() => setVoice(false)} />}
       {editing && <TransactionForm transaction={editing.transaction} onClose={() => setEditing(null)} />}
     </>
   )

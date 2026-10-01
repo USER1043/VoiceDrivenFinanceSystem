@@ -63,7 +63,28 @@ From then on, Render deploys automatically after CI passes on `main`
 Open the `onrender.com` URL in Chrome on your phone, sign in, then **⋮ → Add to Home
 screen** (or **Install app**). The session lasts 90 days per device.
 
-## 5. Nightly backups
+## 5. Voice keys (optional, free)
+
+Voice works without any keys: the browser turns speech into text, and a built-in rule
+parser understands phrases like "paid 180 for auto" or "set food budget to 6000".
+Keys make it better at accents and free-form phrasing:
+
+| Key | Where | What it adds |
+|---|---|---|
+| `GROQ_API_KEY` | console.groq.com → API Keys | Whisper speech-to-text on the server, plus an LLM that understands free-form commands |
+| `GEMINI_API_KEY` | aistudio.google.com → Get API key | Backup LLM if Groq is down or rate-limited |
+
+Add them in Render under **Environment**, then redeploy. The voice screen picks up the
+change automatically. If a provider fails, the next one is tried, ending with the rule
+parser, so a broken key never blocks logging.
+
+Check how well a provider understands your phrases (from `api/`, with the key in `.env`):
+
+```bash
+uv run python -m evals.run --provider groq
+```
+
+## 6. Nightly backups
 
 In GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
 
@@ -88,7 +109,7 @@ GitHub user.
 gpg --decrypt voxfin-<stamp>.sql.gz.gpg | gunzip | psql "<neon connection string>"
 ```
 
-## 6. Optional: keep it awake
+## 7. Optional: keep it awake
 
 Render sleeps after 15 minutes idle, so the first voice command after a break waits ~30–60 s.
 To avoid that, create a free job at cron-job.org that requests

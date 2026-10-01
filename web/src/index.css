@@ -299,17 +299,36 @@ button.wide {
   color: var(--accent);
 }
 
-.fab {
+.fabs {
   position: fixed;
   right: max(1rem, calc(50vw - 19rem));
   bottom: calc(4.5rem + env(safe-area-inset-bottom));
-  width: 3.5rem;
-  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fab,
+.fab-small {
   border-radius: 50%;
-  font-size: 2rem;
-  line-height: 1;
   padding: 0;
+  line-height: 1;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.fab {
+  width: 4rem;
+  height: 4rem;
+  font-size: 1.75rem;
+}
+
+.fab-small {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.5rem;
+  background: var(--card);
+  color: var(--accent);
+  border: 1px solid var(--line);
 }
 
 .sheet {
@@ -670,4 +689,112 @@ button.wide {
 
 .inline-form {
   padding: 0 0 0.75rem;
+}
+
+/* ---------- Voice ---------- */
+
+.voice {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.voice > form,
+.voice .proposal {
+  width: 100%;
+  text-align: left;
+}
+
+.mic {
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 50%;
+  font-size: 2.25rem;
+  padding: 0;
+  margin-top: 0.5rem;
+}
+
+.mic-on {
+  background: var(--critical);
+  color: #ffffff;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(208, 59, 59, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-on {
+    animation: none;
+  }
+}
+
+.center {
+  text-align: center;
+  margin: 0;
+}
+
+.transcript {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.voice-question {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.examples {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.type-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.type-row input {
+  flex: 1;
+}
+
+.proposal-message {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.saved {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.saved p {
+  margin: 0;
+  font-weight: 600;
+  color: var(--good-text);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.toggle input {
+  width: auto;
 }

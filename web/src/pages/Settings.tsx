@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useState } from 'react'
 import { api, type Account, type AccountKind, type Category, type Kind, type Me } from '../api'
 import { useAccounts, useCategories, useSaveAccount, useSaveCategory } from '../queries'
+import { setSpeakingEnabled, speakingEnabled } from '../voice'
 
 const ACCOUNT_KINDS: AccountKind[] = ['upi', 'cash', 'card', 'bank']
 
@@ -177,6 +178,30 @@ function Categories() {
   )
 }
 
+function VoiceSettings() {
+  const [speakOn, setSpeakOn] = useState(speakingEnabled)
+  return (
+    <section className="card">
+      <h2>Voice</h2>
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={speakOn}
+          onChange={(e) => {
+            setSpeakingEnabled(e.target.checked)
+            setSpeakOn(e.target.checked)
+          }}
+        />
+        Read results aloud
+      </label>
+      <p className="muted small">
+        Voice uses Groq speech-to-text when a key is configured on the server, otherwise your browser's own
+        speech recognition. Teach it your words under Categories.
+      </p>
+    </section>
+  )
+}
+
 export default function Settings({ me }: { me: Me }) {
   const client = useQueryClient()
   const logout = useMutation({
@@ -185,6 +210,7 @@ export default function Settings({ me }: { me: Me }) {
   })
   return (
     <>
+      <VoiceSettings />
       <Accounts />
       <Categories />
       <section className="card">

@@ -28,3 +28,8 @@ services:
         sync: false
       - key: OWNER_PASSWORD_HASH # from `uv run python -m app.auth hash-password`
         sync: false
+      # Optional voice upgrades; voice works without them (browser speech + rule parser).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

@@ -3,8 +3,10 @@
 A voice-first personal finance tracker: say *"paid 180 for auto"*, confirm the card, done.
 Built for one person's real daily use (INR, UPI-first), deployed on free infrastructure.
 
-> **Status: V2, milestone M1 (manual tracker):** log, edit and search transactions, accounts,
-> categories with aliases, monthly budgets, a dashboard and CSV export. Voice entry is M2.
+> **Status: V2, milestone M2 (voice entry):** tap the mic, say “paid 180 for auto”, check the
+> card and confirm. Works with no API keys (browser speech + rule parser); a free Groq key
+> upgrades it to Whisper + an LLM. Spending questions are M3.
+>
 > See [`docs/V2_PLAN.md`](docs/V2_PLAN.md) for the
 > full plan and milestones. The original hackathon code is archived at the `v1-hackathon` tag.
 
@@ -15,7 +17,7 @@ Built for one person's real daily use (INR, UPI-first), deployed on free infrast
 | API | FastAPI · SQLAlchemy 2 · Alembic · Postgres 16 · Pydantic Settings |
 | Web | React · Vite · TypeScript · TanStack Query · installable PWA |
 | Auth | Password login (argon2) with hashed, revocable cookie sessions |
-| Speech / AI (M2) | Groq Whisper + Groq LLM tool calling, Gemini fallback (free tiers) |
+| Speech / AI | Groq Whisper + Groq LLM tool calling, Gemini fallback, offline rule parser (free tiers, all optional) |
 | Deploy | One Docker image (API serves the built PWA) on Render's free tier, Neon free Postgres, nightly encrypted backups via GitHub Actions |
 
 ## Layout
