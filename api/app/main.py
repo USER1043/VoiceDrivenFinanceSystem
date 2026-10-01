@@ -5,9 +5,21 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
-from app.routers import auth, health, me
+from app.errors import DomainError
+from app.routers import (
+    accounts,
+    auth,
+    budgets,
+    categories,
+    export,
+    health,
+    me,
+    summary,
+    transactions,
+)
 
 API_PREFIX = "/api"
 MEDIA_TYPES = {".webmanifest": "application/manifest+json"}
@@ -28,13 +40,26 @@ def create_app() -> FastAPI:
     app.middleware("http")(_reject_cross_origin_writes)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
-    app.include_router(me.router, prefix=API_PREFIX)
+    for module in (me, accounts, categories, transactions, budgets, summary, export):
+        app.include_router(module.router, prefix=API_PREFIX)
+    app.add_exception_handler(DomainError, _domain_error)
+    app.add_exception_handler(IntegrityError, _integrity_error)
 
     # Serve the built PWA from the same origin (one hostname, cookie auth, no CORS).
     dist = Path(settings.web_dist_dir)
     if (dist / "index.html").is_file():
         _mount_spa(app, dist)
     return app
+
+
+async def _domain_error(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, DomainError)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+async def _integrity_error(request: Request, exc: Exception) -> Response:
+    # Unique constraints (duplicate names) are the expected cause; never leak SQL details.
+    return JSONResponse({"detail": "That conflicts with existing data"}, status_code=409)
 
 
 async def _reject_cross_origin_writes(
