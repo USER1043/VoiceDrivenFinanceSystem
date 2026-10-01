@@ -29,14 +29,14 @@ def test_create_subcategory_with_normalised_aliases(client, seeded):
     response = client.post(
         "/api/categories",
         json={
-            "name": "Biryani",
+            "name": "Thali",
             "kind": "expense",
             "parent_id": category_id(seeded, "Food"),
-            "aliases": ["  Biryani ", "BIRYANI", "dum   biryani"],
+            "aliases": ["  Thali ", "THALI", "veg   thali"],
         },
     )
     assert response.status_code == 201
-    assert response.json()["aliases"] == ["biryani", "dum biryani"]
+    assert response.json()["aliases"] == ["thali", "veg thali"]
 
 
 def test_category_nesting_rules(client, seeded):

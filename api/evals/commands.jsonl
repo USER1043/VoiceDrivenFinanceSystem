@@ -1,0 +1,123 @@
+{"text": "paid 180 for auto", "tool": "add_transaction", "amount_paise": 18000, "kind": "expense", "category": "Auto & cab"}
+{"text": "Paid 180 rupees for an auto", "tool": "add_transaction", "amount_paise": 18000, "category": "Auto & cab"}
+{"text": "auto 60", "tool": "add_transaction", "amount_paise": 6000, "category": "Auto & cab"}
+{"text": "uber to office 320", "tool": "add_transaction", "amount_paise": 32000, "category": "Auto & cab"}
+{"text": "ola cab 245.50", "tool": "add_transaction", "amount_paise": 24550, "category": "Auto & cab"}
+{"text": "rapido bike 89", "tool": "add_transaction", "amount_paise": 8900, "category": "Auto & cab"}
+{"text": "chai 20", "tool": "add_transaction", "amount_paise": 2000, "category": "Tea & snacks"}
+{"text": "chai 20 cash", "tool": "add_transaction", "amount_paise": 2000, "category": "Tea & snacks", "account": "Cash"}
+{"text": "Had tea for 15 rupees", "tool": "add_transaction", "amount_paise": 1500, "category": "Tea & snacks"}
+{"text": "coffee at starbucks 350", "tool": "add_transaction", "amount_paise": 35000, "category": "Tea & snacks", "merchant": "Starbucks"}
+{"text": "samosa and chai 40 in cash", "tool": "add_transaction", "amount_paise": 4000, "category": "Tea & snacks", "account": "Cash"}
+{"text": "snacks 75", "tool": "add_transaction", "amount_paise": 7500, "category": "Tea & snacks"}
+{"text": "450 swiggy", "tool": "add_transaction", "amount_paise": 45000, "category": "Eating out"}
+{"text": "swiggy order 450 yesterday", "tool": "add_transaction", "amount_paise": 45000, "category": "Eating out", "days_ago": 1}
+{"text": "zomato 612", "tool": "add_transaction", "amount_paise": 61200, "category": "Eating out"}
+{"text": "lunch 150", "tool": "add_transaction", "amount_paise": 15000, "category": "Eating out"}
+{"text": "dinner with friends 1200 on card", "tool": "add_transaction", "amount_paise": 120000, "category": "Eating out", "account": "Card"}
+{"text": "spent 800 at a restaurant", "tool": "add_transaction", "amount_paise": 80000, "category": "Eating out"}
+{"text": "Rs 99 lunch", "tool": "add_transaction", "amount_paise": 9900, "category": "Eating out"}
+{"text": "₹250 dinner", "tool": "add_transaction", "amount_paise": 25000, "category": "Eating out"}
+{"text": "groceries 1,250 at dmart", "tool": "add_transaction", "amount_paise": 125000, "category": "Groceries", "merchant": "Dmart"}
+{"text": "dmart 1890", "tool": "add_transaction", "amount_paise": 189000, "category": "Groceries"}
+{"text": "vegetables 120", "tool": "add_transaction", "amount_paise": 12000, "category": "Groceries"}
+{"text": "sabzi 80 cash", "tool": "add_transaction", "amount_paise": 8000, "category": "Groceries", "account": "Cash"}
+{"text": "blinkit order 560", "tool": "add_transaction", "amount_paise": 56000, "category": "Groceries"}
+{"text": "zepto 349", "tool": "add_transaction", "amount_paise": 34900, "category": "Groceries"}
+{"text": "bigbasket 2.5k", "tool": "add_transaction", "amount_paise": 250000, "category": "Groceries"}
+{"text": "kirana shop 230", "tool": "add_transaction", "amount_paise": 23000, "category": "Groceries"}
+{"text": "bought groceries for 640 yesterday", "tool": "add_transaction", "amount_paise": 64000, "category": "Groceries", "days_ago": 1}
+{"text": "petrol 500", "tool": "add_transaction", "amount_paise": 50000, "category": "Fuel"}
+{"text": "filled petrol for 1000 rupees", "tool": "add_transaction", "amount_paise": 100000, "category": "Fuel"}
+{"text": "diesel 2000 on card", "tool": "add_transaction", "amount_paise": 200000, "category": "Fuel", "account": "Card"}
+{"text": "fuel 750", "tool": "add_transaction", "amount_paise": 75000, "category": "Fuel"}
+{"text": "bus ticket 25", "tool": "add_transaction", "amount_paise": 2500, "category": "Public transport"}
+{"text": "train ticket 435", "tool": "add_transaction", "amount_paise": 43500, "category": "Public transport"}
+{"text": "rent 15000", "tool": "add_transaction", "amount_paise": 1500000, "category": "Rent"}
+{"text": "paid rent 15k", "tool": "add_transaction", "amount_paise": 1500000, "category": "Rent"}
+{"text": "paid the rent of 18,500", "tool": "add_transaction", "amount_paise": 1850000, "category": "Rent"}
+{"text": "electricity bill 1340", "tool": "add_transaction", "amount_paise": 134000, "category": "Electricity"}
+{"text": "eb bill 980", "tool": "add_transaction", "amount_paise": 98000, "category": "Electricity"}
+{"text": "current bill 1100", "tool": "add_transaction", "amount_paise": 110000, "category": "Electricity"}
+{"text": "mobile recharge 299", "tool": "add_transaction", "amount_paise": 29900, "category": "Mobile & internet"}
+{"text": "jio recharge 719", "tool": "add_transaction", "amount_paise": 71900, "category": "Mobile & internet"}
+{"text": "wifi bill 589", "tool": "add_transaction", "amount_paise": 58900, "category": "Mobile & internet"}
+{"text": "broadband 999 on card", "tool": "add_transaction", "amount_paise": 99900, "category": "Mobile & internet", "account": "Card"}
+{"text": "internet 700", "tool": "add_transaction", "amount_paise": 70000, "category": "Mobile & internet"}
+{"text": "amazon 1499", "tool": "add_transaction", "amount_paise": 149900, "category": "Shopping"}
+{"text": "bought shoes on flipkart for 2299", "tool": "add_transaction", "amount_paise": 229900, "category": "Shopping"}
+{"text": "myntra 1799 card", "tool": "add_transaction", "amount_paise": 179900, "category": "Shopping", "account": "Card"}
+{"text": "shopping 3000", "tool": "add_transaction", "amount_paise": 300000, "category": "Shopping"}
+{"text": "medicine 340", "tool": "add_transaction", "amount_paise": 34000, "category": "Health"}
+{"text": "doctor fees 500", "tool": "add_transaction", "amount_paise": 50000, "category": "Health"}
+{"text": "pharmacy 215 cash", "tool": "add_transaction", "amount_paise": 21500, "category": "Health", "account": "Cash"}
+{"text": "hospital 4500", "tool": "add_transaction", "amount_paise": 450000, "category": "Health"}
+{"text": "movie tickets 600", "tool": "add_transaction", "amount_paise": 60000, "category": "Entertainment"}
+{"text": "movie 450 yesterday", "tool": "add_transaction", "amount_paise": 45000, "category": "Entertainment", "days_ago": 1}
+{"text": "netflix 649", "tool": "add_transaction", "amount_paise": 64900, "category": "Subscriptions"}
+{"text": "spotify 119", "tool": "add_transaction", "amount_paise": 11900, "category": "Subscriptions"}
+{"text": "prime subscription 1499", "tool": "add_transaction", "amount_paise": 149900, "category": "Subscriptions"}
+{"text": "hotstar 299", "tool": "add_transaction", "amount_paise": 29900, "category": "Subscriptions"}
+{"text": "course fees 4999", "tool": "add_transaction", "amount_paise": 499900, "category": "Education"}
+{"text": "books 650", "tool": "add_transaction", "amount_paise": 65000, "category": "Education"}
+{"text": "haircut 200", "tool": "add_transaction", "amount_paise": 20000, "category": "Personal care"}
+{"text": "salon 800", "tool": "add_transaction", "amount_paise": 80000, "category": "Personal care"}
+{"text": "birthday gift 1500", "tool": "add_transaction", "amount_paise": 150000, "category": "Gifts & donations"}
+{"text": "donation 501", "tool": "add_transaction", "amount_paise": 50100, "category": "Gifts & donations"}
+{"text": "spent 300", "tool": "add_transaction", "amount_paise": 30000, "kind": "expense"}
+{"text": "paid 2500 to ramesh", "tool": "add_transaction", "amount_paise": 250000, "kind": "expense", "merchant": "Ramesh"}
+{"text": "misc 100", "tool": "add_transaction", "amount_paise": 10000, "category": "Other"}
+{"text": "auto 40 day before yesterday", "tool": "add_transaction", "amount_paise": 4000, "category": "Auto & cab", "days_ago": 2}
+{"text": "lunch 180 on monday", "tool": "add_transaction", "amount_paise": 18000, "category": "Eating out", "days_ago": 3}
+{"text": "paid 120 for chai via gpay", "tool": "add_transaction", "amount_paise": 12000, "category": "Tea & snacks", "account": "UPI"}
+{"text": "groceries 900 phonepe", "tool": "add_transaction", "amount_paise": 90000, "category": "Groceries", "account": "UPI"}
+{"text": "paytm 150 auto", "tool": "add_transaction", "amount_paise": 15000, "category": "Auto & cab", "account": "UPI"}
+{"text": "spent 1.5k on groceries", "tool": "add_transaction", "amount_paise": 150000, "category": "Groceries"}
+{"text": "dinner 1200/-", "tool": "add_transaction", "amount_paise": 120000, "category": "Eating out"}
+{"text": "500rs petrol", "tool": "add_transaction", "amount_paise": 50000, "category": "Fuel"}
+{"text": "uber 4 km ride 156", "tool": "add_transaction", "amount_paise": 15600, "category": "Auto & cab"}
+{"text": "2 coffees for 180", "tool": "add_transaction", "amount_paise": 18000, "category": "Tea & snacks"}
+{"text": "salary credited 85000", "tool": "add_transaction", "amount_paise": 8500000, "kind": "income", "category": "Salary"}
+{"text": "salary 85k", "tool": "add_transaction", "amount_paise": 8500000, "kind": "income", "category": "Salary"}
+{"text": "received stipend of 25000", "tool": "add_transaction", "amount_paise": 2500000, "kind": "income", "category": "Salary"}
+{"text": "got 500 from mom", "tool": "add_transaction", "amount_paise": 50000, "kind": "income", "merchant": "Mom"}
+{"text": "got 500 from mom on gpay", "tool": "add_transaction", "amount_paise": 50000, "kind": "income", "account": "UPI"}
+{"text": "received 2000 from rahul", "tool": "add_transaction", "amount_paise": 200000, "kind": "income", "merchant": "Rahul"}
+{"text": "amazon refund 1499", "tool": "add_transaction", "amount_paise": 149900, "kind": "income", "category": "Refunds & cashback"}
+{"text": "cashback 50", "tool": "add_transaction", "amount_paise": 5000, "kind": "income", "category": "Refunds & cashback"}
+{"text": "refund of 320 from swiggy", "tool": "add_transaction", "amount_paise": 32000, "kind": "income", "category": "Refunds & cashback"}
+{"text": "earned 3000 freelancing", "tool": "add_transaction", "amount_paise": 300000, "kind": "income"}
+{"text": "1.2 lakh salary credited", "tool": "add_transaction", "amount_paise": 12000000, "kind": "income", "category": "Salary"}
+{"text": "set food budget to 6000", "tool": "set_budget", "amount_paise": 600000, "category": "Food"}
+{"text": "food budget 6000", "tool": "set_budget", "amount_paise": 600000, "category": "Food"}
+{"text": "set a budget of 3000 for eating out", "tool": "set_budget", "amount_paise": 300000, "category": "Eating out"}
+{"text": "limit shopping to 5k this month", "tool": "set_budget", "amount_paise": 500000, "category": "Shopping"}
+{"text": "don't let me spend more than 2000 on entertainment", "tool": "set_budget", "amount_paise": 200000, "category": "Entertainment"}
+{"text": "transport budget 4000", "tool": "set_budget", "amount_paise": 400000, "category": "Transport"}
+{"text": "make the fuel budget 3500", "tool": "set_budget", "amount_paise": 350000, "category": "Fuel"}
+{"text": "budget for groceries 8000", "tool": "set_budget", "amount_paise": 800000, "category": "Groceries"}
+{"text": "set budget", "tool": "clarify"}
+{"text": "food budget", "tool": "clarify"}
+{"text": "paid for auto", "tool": "clarify"}
+{"text": "groceries", "tool": "clarify"}
+{"text": "salary credited", "tool": "clarify"}
+{"text": "how much did I spend on food this month", "tool": "unsupported"}
+{"text": "what is my balance?", "tool": "unsupported"}
+{"text": "show my expenses", "tool": "unsupported"}
+{"text": "hello", "tool": "unsupported"}
+{"text": "what's the weather", "tool": "unsupported"}
+{"text": "Bought vegetables from the market for 230 rupees", "tool": "add_transaction", "amount_paise": 23000, "category": "Groceries"}
+{"text": "I spent two hundred on lunch", "tool": "add_transaction", "amount_paise": 20000, "category": "Eating out"}
+{"text": "two hundred and fifty for auto", "tool": "add_transaction", "amount_paise": 25000, "category": "Auto & cab"}
+{"text": "groceries five hundred", "tool": "add_transaction", "amount_paise": 50000, "category": "Groceries"}
+{"text": "one lakh twenty thousand salary", "tool": "add_transaction", "amount_paise": 12000000, "kind": "income", "category": "Salary"}
+{"text": "maid salary 3000", "tool": "add_transaction", "amount_paise": 300000, "kind": "expense"}
+{"text": "recharged my phone for 239", "tool": "add_transaction", "amount_paise": 23900, "category": "Mobile & internet"}
+{"text": "ordered pizza 499", "tool": "add_transaction", "amount_paise": 49900, "category": "Eating out"}
+{"text": "paid 45 for parking", "tool": "add_transaction", "amount_paise": 4500, "category": "Transport"}
+{"text": "Uber 230 on credit card", "tool": "add_transaction", "amount_paise": 23000, "category": "Auto & cab", "account": "Card"}
+{"text": "set entertainment limit as 1500", "tool": "set_budget", "amount_paise": 150000, "category": "Entertainment"}
+{"text": "got my salary 52000 today", "tool": "add_transaction", "amount_paise": 5200000, "kind": "income", "category": "Salary", "days_ago": 0}
+{"text": "500 to swiggy", "tool": "add_transaction", "amount_paise": 50000, "category": "Eating out", "merchant": "Swiggy"}
+{"text": "booked train tickets 1250 yesterday", "tool": "add_transaction", "amount_paise": 125000, "category": "Public transport", "days_ago": 1}
+{"text": "metro card recharge 500", "tool": "add_transaction", "amount_paise": 50000, "category": "Public transport", "account": "UPI"}

@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     owner_password_hash: str = ""
     session_days: int = 90
 
+    # ---------- Voice and language (M2) ----------
+    # All optional. Without keys, the browser does speech-to-text and a built-in rule parser
+    # understands the command. Model ids live here because free tiers change them.
+    groq_api_key: str = ""
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_stt_model: str = "whisper-large-v3-turbo"
+    groq_llm_model: str = "openai/gpt-oss-20b"
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_llm_model: str = "gemini-flash-lite-latest"
+    ai_timeout_seconds: float = 8.0
+    pending_action_minutes: int = 10
+
     # Directory with the built PWA (web/dist). Served at "/" when present.
     web_dist_dir: str = "../web/dist"
 

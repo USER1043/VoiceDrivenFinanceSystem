@@ -1,7 +1,7 @@
 """Request and response bodies. Amounts are always integer paise."""
 
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -172,3 +172,54 @@ class Summary(BaseModel):
     by_category: list[CategorySpend]
     budgets: list[BudgetStatus]
     daily: list[DailySpend]
+
+
+# ---------- Voice and typed commands (M2) ----------
+
+CommandText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+class CommandIn(BaseModel):
+    text: CommandText
+    # The earlier utterance when answering a follow-up ("How much was it?" -> "450").
+    previous: CommandText | None = None
+    # "voice" when the browser transcribed it (no server speech-to-text), else typed.
+    via: Literal["voice", "text"] = "text"
+
+
+class PendingActionOut(BaseModel):
+    id: int
+    tool: Literal["add_transaction", "set_budget"]
+    data: dict[str, Any]
+    expires_at: datetime
+
+
+class CommandOut(BaseModel):
+    status: Literal["proposal", "clarify", "unsupported"]
+    transcript: str
+    message: str
+    parser: str
+    action: PendingActionOut | None = None
+
+
+class ConfirmIn(BaseModel):
+    """Corrections made on the confirm card. Only sent fields replace the proposal's."""
+
+    kind: TransactionKind | None = None
+    amount_paise: Paise | None = None
+    category_id: int | None = None
+    account_id: int | None = None
+    occurred_at: AwareDatetime | None = None
+    merchant: Merchant | None = None
+
+
+class ConfirmOut(BaseModel):
+    tool: Literal["add_transaction", "set_budget"]
+    message: str
+    transaction: TransactionOut | None = None
+    budget: BudgetOut | None = None
+
+
+class VoiceStatus(BaseModel):
+    server_stt: bool
+    llm: list[str]
