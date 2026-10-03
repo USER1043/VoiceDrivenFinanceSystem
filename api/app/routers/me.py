@@ -1,22 +1,27 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.auth import CurrentUser
-from app.config import Settings, get_settings
 
 router = APIRouter(tags=["me"])
 
 
 class MeOut(BaseModel):
     email: str
+    name: str | None
     timezone: str
-    can_log_out: bool
+    is_admin: bool
+    has_password: bool
+    has_google: bool
 
 
 @router.get("/me", response_model=MeOut)
-def me(user: CurrentUser, settings: Annotated[Settings, Depends(get_settings)]) -> MeOut:
+def me(user: CurrentUser) -> MeOut:
     return MeOut(
-        email=user.email, timezone=user.timezone, can_log_out=settings.auth_mode == "password"
+        email=user.email,
+        name=user.name,
+        timezone=user.timezone,
+        is_admin=user.is_admin,
+        has_password=user.password_hash is not None,
+        has_google=user.google_sub is not None,
     )

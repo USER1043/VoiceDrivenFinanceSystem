@@ -3,7 +3,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.auth import CurrentUser
+from app.auth import CurrentUser, RateLimiter, too_many
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.models import Transaction, User
@@ -26,6 +26,19 @@ from app.services import commands as service
 router = APIRouter(tags=["voice"])
 DB = Annotated[Session, Depends(get_session)]
 Config = Annotated[Settings, Depends(get_settings)]
+
+
+# Voice and typed commands share the free AI quotas, so each person gets a fair slice.
+_command_limiter = RateLimiter(limit=30, window=600)
+
+
+def _check_quota(user: User, settings: Settings) -> None:
+    _command_limiter.limit = settings.commands_per_10_minutes
+    key = str(user.id)
+    wait = _command_limiter.retry_after(key)
+    if wait:
+        raise too_many(wait, "That's a lot of commands; please wait a few minutes")
+    _command_limiter.hit(key)
 
 
 def _combine(text: str, previous: str | None) -> str:
@@ -62,6 +75,7 @@ def voice_status(user: CurrentUser, settings: Config) -> VoiceStatus:
 @router.post("/commands", response_model=CommandOut)
 def typed_command(body: CommandIn, user: CurrentUser, session: DB, settings: Config) -> CommandOut:
     """Understand a typed (or browser-transcribed) command and propose an action."""
+    _check_quota(user, settings)
     text = _combine(body.text, body.previous)
     return _out(service.run_command(session, user, settings, text, via=body.via), body.text)
 
@@ -75,6 +89,7 @@ def voice_command(
     previous: Annotated[str | None, Form(max_length=500)] = None,
 ) -> CommandOut:
     """Transcribe a short recording on the server (Groq Whisper), then as /commands."""
+    _check_quota(user, settings)
     transcriber = transcriber_from_settings(settings)
     if transcriber is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Server speech-to-text is off")
@@ -82,7 +97,7 @@ def voice_command(
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Recording is too long")
     if not data:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Empty recording")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Empty recording")
     try:
         transcript = transcriber.transcribe(
             data,

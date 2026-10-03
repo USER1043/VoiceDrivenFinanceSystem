@@ -13,16 +13,26 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     database_url: str = "postgresql+psycopg://voxfin:voxfin@localhost:5432/voxfin"
 
-    # The single owner of this instance. Seeded on startup.
+    # The admin: created on startup if missing, and always kept an admin.
     owner_email: str = "me@example.com"
     timezone: str = "Asia/Kolkata"
 
-    # "dev" trusts every request as the owner (local only).
-    # "password" requires logging in with the owner's password (required in production).
+    # "dev" trusts every request as the admin (local only).
+    # "password" means real accounts: email + password and/or Google (required in production).
     auth_mode: Literal["dev", "password"] = "dev"
-    # Argon2 hash of the owner's password; generate with `python -m app.auth hash-password`.
+    # Optional argon2 hash (`python -m app.auth hash-password`) used to give the admin a
+    # password on first start; after that passwords live in the database.
     owner_password_hash: str = ""
     session_days: int = 90
+    # Anyone with the URL can create an account while this is on.
+    signup_enabled: bool = True
+    # The public address, e.g. https://voxfin.onrender.com. Needed for Google sign-in.
+    public_url: str = ""
+    # Google sign-in (optional): an OAuth "Web application" client from Google Cloud.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Per-user cap on voice/typed commands, protecting the shared free AI quotas.
+    commands_per_10_minutes: int = 30
 
     # ---------- Voice and language (M2) ----------
     # All optional. Without keys, the browser does speech-to-text and a built-in rule parser
@@ -53,9 +63,19 @@ class Settings(BaseSettings):
     def _check_auth(self) -> "Settings":
         if self.environment == "production" and self.auth_mode != "password":
             raise ValueError("AUTH_MODE must be 'password' in production")
-        if self.auth_mode == "password" and not self.owner_password_hash.startswith("$argon2"):
-            raise ValueError("OWNER_PASSWORD_HASH must be an argon2 hash in password mode")
+        if self.owner_password_hash and not self.owner_password_hash.startswith("$argon2"):
+            raise ValueError("OWNER_PASSWORD_HASH must be an argon2 hash")
+        if self.google_enabled and not self.public_url.startswith(("https://", "http://localhost")):
+            raise ValueError("PUBLIC_URL (https://...) is required for Google sign-in")
         return self
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def admin_email(self) -> str:
+        return self.owner_email.strip().lower()
 
     @property
     def secure_cookies(self) -> bool:

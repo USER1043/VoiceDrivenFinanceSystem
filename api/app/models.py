@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -101,8 +102,16 @@ class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True)  # always stored lowercase
+    name: Mapped[str | None] = mapped_column(String(80))
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata")
+    # Argon2 hash; None for people who only use Google sign-in.
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    # Google's stable account id ("sub" claim), once linked.
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True)
+    is_admin: Mapped[bool] = mapped_column(default=False, server_default=false())
+    disabled: Mapped[bool] = mapped_column(default=False, server_default=false())
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class LoginSession(Base):
@@ -116,6 +125,20 @@ class LoginSession(Base):
     user_agent: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PasswordReset(Base):
+    """One-time link an admin creates for someone who forgot their password."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Account(TimestampMixin, Base):
