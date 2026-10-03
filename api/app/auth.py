@@ -173,11 +173,11 @@ def main(argv: list[str]) -> int:
     if argv != ["hash-password"]:
         print("usage: python -m app.auth hash-password", file=sys.stderr)
         return 2
-    password = getpass("New password: ")
+    password = getpass("Choose your VoxFin login password (typing is hidden): ")
     if len(password) < 12:
         print("Use at least 12 characters.", file=sys.stderr)
         return 1
-    if getpass("Repeat: ") != password:
+    if getpass("Type it again: ") != password:
         print("Passwords do not match.", file=sys.stderr)
         return 1
     print(hash_password(password))
