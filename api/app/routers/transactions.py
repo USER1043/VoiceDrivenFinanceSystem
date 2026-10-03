@@ -2,25 +2,26 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser
 from app.db import get_session
 from app.errors import get_owned
-from app.models import Category, Transaction, TransactionKind, User
-from app.schemas import TransactionIn, TransactionOut, TransactionPage, TransactionPatch
+from app.models import Transaction, TransactionKind, User
+from app.schemas import (
+    TransactionIn,
+    TransactionOut,
+    TransactionPage,
+    TransactionPatch,
+    TransactionSaved,
+)
+from app.services import budgets as budget_service
 from app.services import transactions as service
 from app.timeutil import MONTH_PATTERN, month_bounds
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 DB = Annotated[Session, Depends(get_session)]
-
-
-def category_and_children(category_id: int) -> Select[int]:
-    return select(Category.id).where(
-        or_(Category.id == category_id, Category.parent_id == category_id)
-    )
 
 
 @router.get("", response_model=TransactionPage)
@@ -42,7 +43,9 @@ def list_transactions(
         start, end = month_bounds(month, user.timezone)
         conditions += [Transaction.occurred_at >= start, Transaction.occurred_at < end]
     if category_id is not None:
-        conditions.append(Transaction.category_id.in_(category_and_children(category_id)))
+        conditions.append(
+            Transaction.category_id.in_(budget_service.covered_categories(category_id))
+        )
     if uncategorised:
         conditions.append(Transaction.category_id.is_(None))
     if account_id is not None:
@@ -77,11 +80,12 @@ def get_transaction(transaction_id: int, user: CurrentUser, session: DB) -> Tran
     return to_out(get_owned(session, Transaction, transaction_id, user.id), user)
 
 
-@router.post("", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
-def create_transaction(body: TransactionIn, user: CurrentUser, session: DB) -> TransactionOut:
+@router.post("", response_model=TransactionSaved, status_code=status.HTTP_201_CREATED)
+def create_transaction(body: TransactionIn, user: CurrentUser, session: DB) -> TransactionSaved:
     txn = service.create_transaction(session, user, body)
+    alerts = budget_service.alerts_for(session, user, txn)
     session.commit()
-    return to_out(txn, user)
+    return TransactionSaved(**to_out(txn, user).model_dump(), alerts=alerts)
 
 
 @router.patch("/{transaction_id}", response_model=TransactionOut)

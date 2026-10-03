@@ -3,6 +3,9 @@
 Handles the short, everyday phrasings people actually say:
 "paid 180 for auto", "chai 20 cash", "450 swiggy yesterday", "salary credited 85k",
 "set food budget to 6000", "got 500 from mom on gpay".
+
+And questions: "how much did I spend on food this month", "top categories last month",
+"where did I spend the most in August", "how much is left in my food budget".
 """
 
 import re
@@ -10,7 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from app.models import AccountKind, CategoryKind
-from app.nlu.raw import RawCommand
+from app.nlu.raw import Metric, RawCommand
 from app.nlu.vocab import VocabCategory, Vocabulary
 
 _MULTIPLIERS = {
@@ -40,7 +43,60 @@ _STAFF_PAY = re.compile(
     r"\b(?:maid|driver|cook|watchman|helper|servant|staff|nanny|gardener|bai|didi)'?s?\s+"
     r"(?:salary|pay|payment)\b|\b(?:paid|gave)\b.*\bsalary\b"
 )
-_QUESTION = re.compile(r"^(?:how|what|show|tell|list|which|when)\b|\?\s*$")
+_QUESTION = re.compile(
+    r"^(?:how|what|what's|whats|show|tell|list|which|when|where|did|do|am|have|give)\b|\?\s*$"
+)
+# Words that make a question (or an amount-less phrase) about money, not small talk.
+_MONEY_TOPIC = re.compile(
+    r"\b(?:spend|spent|spending|spends|expense|expenses|expenditure|cost|costs|paid|pay|money|"
+    r"earn|earned|earnings|income|received|receive|made|make|budgets?|total|breakdown|"
+    r"categor(?:y|ies)|merchants?|shops?|stores?|how\s+much)\b"
+)
+_QUERY_HINT = re.compile(
+    r"\b(?:spending|expenses|expenditure|earnings|income|breakdown|summary|total|so\s+far|"
+    r"top\s+\d*\s*(?:categor(?:y|ies)|merchants?|shops?|stores?|places?))\b"
+)
+_ASK_BUDGET = re.compile(r"\bbudgets?\b")
+_ASK_MERCHANTS = re.compile(r"\b(?:merchants?|shops?|stores?|places?|apps?|restaurants?|who)\b")
+_ASK_CATEGORIES = re.compile(
+    r"\b(?:categor(?:y|ies)|breakdown|where\b.*\b(?:money|most|go|went)|most\s+on|"
+    r"biggest|top)\b"
+)
+_ASK_INCOME = re.compile(
+    r"\b(?:earn|earned|earnings|income|received|receive|credited|got\s+paid|"
+    r"(?:did|do)\s+i\s+(?:make|get)|salary)\b"
+)
+_MONTHS = {
+    name: index
+    for index, names in enumerate(
+        [
+            ("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"),
+            ("may",), ("june", "jun"), ("july", "jul"), ("august", "aug"),
+            ("september", "sep", "sept"), ("october", "oct"), ("november", "nov"),
+            ("december", "dec"),
+        ],
+        start=1,
+    )
+    for name in names
+}  # fmt: skip
+_MONTH_NAME = re.compile(
+    r"\b(?:in|during|for|of|since)\s+(?P<m>" + "|".join(_MONTHS) + r")\b(?:\s+(?P<y>20\d\d))?"
+    r"|\b(?P<m2>" + "|".join(n for n in _MONTHS if len(n) > 3) + r")\b(?:\s+(?P<y2>20\d\d))?"
+)
+_PERIODS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\b(?:today|tonight|so\s+far\s+today)\b"), "today"),
+    (re.compile(r"\byesterday\b"), "yesterday"),
+    (re.compile(r"\b(?:last|past|previous)\s+week\b"), "last_week"),
+    (re.compile(r"\bthis\s+week\b|\bweek\s+so\s+far\b"), "this_week"),
+    (re.compile(r"\b(?:last|previous|past)\s+month\b"), "last_month"),
+    (re.compile(r"\b(?:last|previous|past)\s+year\b"), "last_year"),
+    (re.compile(r"\bthis\s+year\b|\byear\s+so\s+far\b"), "this_year"),
+]
+_LAST_DAYS = re.compile(r"\b(?:last|past|previous)\s+(?P<n>\d{1,3})\s+days?\b")
+_QUERY_STOP = re.compile(
+    r"\s+\b(?:this|last|past|previous|since|during|so|till|until|today|yesterday|in|on|by|"
+    r"with|using|via|through)\b.*$"
+)
 _BUDGET = re.compile(
     r"\b(?:budget|limit|cap)\b|spend\s+(?:no\s+)?more\s+than|don'?t\s+(?:let\s+me\s+)?spend"
 )
@@ -221,18 +277,78 @@ def _merchant(text: str, category: VocabCategory | None) -> str | None:
     return merchant.title()
 
 
+def _period(text: str, today: date) -> str | None:
+    if match := _LAST_DAYS.search(text):
+        return f"last_{match['n']}_days"
+    for pattern, period in _PERIODS:
+        if pattern.search(text):
+            return period
+    if match := _MONTH_NAME.search(text):
+        month = _MONTHS[match["m"] or match["m2"]]
+        year = int(match["y"] or match["y2"] or today.year)
+        return f"{year}-{month:02d}"
+    return None
+
+
+def _query_merchant(text: str) -> str | None:
+    match = re.search(r"\b(?:at|from|to)\s+(?P<m>[a-z][\w&'. -]*)", text)
+    if not match:
+        return None
+    merchant = _QUERY_STOP.sub("", match["m"]).strip(" .'-?")
+    merchant = re.sub(r"^(?:the|a|an|my)\s+", "", merchant)
+    if not merchant or merchant in _NOT_MERCHANTS or len(merchant.split()) > 4:
+        return None
+    return merchant.title()
+
+
+def _query(t: str, vocab: Vocabulary, today: date) -> RawCommand:
+    metric: Metric = "total"
+    if _ASK_BUDGET.search(t):
+        metric = "budget"
+    elif _ASK_MERCHANTS.search(t):
+        metric = "top_merchants"
+    elif _ASK_CATEGORIES.search(t):
+        metric = "top_categories"
+    kind = CategoryKind.INCOME if _ASK_INCOME.search(t) and metric != "budget" else None
+    # "income" and "salary" pick the kind; they only name a category when nothing else does.
+    words = re.sub(r"\b(?:income|spending|spend|spent|earnings)\b", " ", _strip_numbers(t))
+    category = _category(words, vocab, kind or CategoryKind.EXPENSE)
+    if category and kind and category.name.lower() in ("other income",):
+        category = None
+    merchant = _query_merchant(t)
+    if merchant and category:
+        if merchant.lower() in (category.name.lower(), *category.aliases):
+            merchant = None  # "at dmart": the alias already says Groceries
+        elif _category(words.replace(merchant.lower(), " "), vocab, category.kind) is None:
+            category = None  # "at chai point" is a shop, not the Tea category
+    return RawCommand(
+        tool="query_spending",
+        metric=metric,
+        kind=kind.value if kind else "expense",
+        category=category.name if category else None,
+        merchant=merchant,
+        account=_account(t, vocab),
+        period=_period(t, today),
+    )
+
+
 def parse(text: str, vocab: Vocabulary, today: date) -> RawCommand:
     t = _normalise(text)
     if not t:
         return RawCommand(tool="clarify", question="I didn't catch that. What did you spend?")
-    if _QUESTION.search(t):
-        return RawCommand(
-            tool="unsupported",
-            question="Questions about your spending are coming in the next update. "
-            "For now I can log expenses, income and budgets.",
-        )
 
     amount = _amount(t)
+    # Numbers in "last 7 days", "top 5" or "august 2025" are not amounts.
+    plain = _MONTH_NAME.sub(" ", _LAST_DAYS.sub(" ", re.sub(r"\btop\s+\d+", " ", t)))
+    asking = _QUESTION.search(t) or (_amount(plain) is None and _QUERY_HINT.search(t))
+    if asking:
+        if _MONEY_TOPIC.search(t) or _category(_strip_numbers(t), vocab, CategoryKind.EXPENSE):
+            return _query(t, vocab, today)
+        return RawCommand(
+            tool="unsupported",
+            question="I can log spending and answer questions like "
+            "“how much did I spend on food this month?”",
+        )
     words = _strip_numbers(t)
 
     if _BUDGET.search(t):

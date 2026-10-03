@@ -31,6 +31,7 @@ def understand(
     elif raw.tool == "unsupported" and (fallback := rules.parse(text, vocab, now.date())).tool in (
         "add_transaction",
         "set_budget",
+        "query_spending",
     ):
         # A cautious model refused something the rules understand ("chai 20"): take the rules.
         raw, parser = fallback, "rules"

@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -13,6 +13,8 @@ from app.nlu.stt import MAX_AUDIO_BYTES, TranscriptionError, transcriber_from_se
 from app.nlu.vocab import Vocabulary
 from app.routers.transactions import to_out
 from app.schemas import (
+    AnswerItem,
+    AnswerOut,
     BudgetOut,
     CommandIn,
     CommandOut,
@@ -54,12 +56,22 @@ def _out(result: service.CommandResult, transcript: str) -> CommandOut:
             data=result.action.payload["data"],
             expires_at=result.action.expires_at,
         )
+    answer = None
+    if result.answer is not None:
+        answer = AnswerOut(
+            total_paise=result.answer.total_paise,
+            items=[
+                AnswerItem(label=i.label, amount_paise=i.amount_paise, limit_paise=i.limit_paise)
+                for i in result.answer.items
+            ],
+        )
     return CommandOut(
         status=result.status,
         transcript=transcript,
         message=result.message,
         parser=result.parser,
         action=action,
+        answer=answer,
     )
 
 
@@ -115,27 +127,27 @@ def voice_command(
     return _out(service.run_command(session, user, settings, text, via="voice"), transcript)
 
 
-def _confirm_message(written: Any, user: User) -> str:
-    if isinstance(written, Transaction):
-        return f"Saved {format_inr(written.amount_paise)}."
-    return f"Budget set to {format_inr(written.amount_paise)} a month."
-
-
 @router.post("/pending-actions/{action_id}/confirm", response_model=ConfirmOut)
 def confirm_action(
     action_id: int, user: CurrentUser, session: DB, body: ConfirmIn | None = None
 ) -> ConfirmOut:
     overrides = body.model_dump(exclude_unset=True, mode="json") if body else {}
-    written = service.confirm(session, user, action_id, overrides)
+    done = service.confirm(session, user, action_id, overrides)
+    written = done.written
     if isinstance(written, Transaction):
+        # Alerts go into the spoken message too, so they are heard, not only seen.
+        message = " ".join(
+            [f"Saved {format_inr(written.amount_paise)}.", *(a.message for a in done.alerts)]
+        )
         return ConfirmOut(
             tool="add_transaction",
-            message=_confirm_message(written, user),
+            message=message,
             transaction=to_out(written, user),
+            alerts=done.alerts,
         )
     return ConfirmOut(
         tool="set_budget",
-        message=_confirm_message(written, user),
+        message=f"Budget set to {format_inr(written.amount_paise)} a month.",
         budget=BudgetOut.model_validate(written),
     )
 

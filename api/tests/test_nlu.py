@@ -11,7 +11,15 @@ from app.nlu import rules
 from app.nlu.llm import LLMProvider, ProviderError
 from app.nlu.pipeline import understand
 from app.nlu.raw import RawCommand
-from app.nlu.resolve import NeedsInput, Understood, find_category, resolve, to_paise
+from app.nlu.resolve import (
+    Answerable,
+    NeedsInput,
+    Understood,
+    find_category,
+    period_range,
+    resolve,
+    to_paise,
+)
 from app.nlu.vocab import Vocabulary
 from evals.run import evaluate
 
@@ -119,7 +127,7 @@ def test_llm_tool_call_becomes_raw_command():
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert body["messages"][1]["content"] == "swiggy 450"  # only the utterance is sent
     assert {t["function"]["name"] for t in body["tools"]} == {
-        "add_transaction", "set_budget", "clarify", "unsupported"
+        "add_transaction", "set_budget", "query_spending", "clarify", "unsupported"
     }  # fmt: skip
 
 
@@ -162,8 +170,62 @@ def test_pipeline_overrides_an_overcautious_refusal():
     assert isinstance(result, Understood)
 
 
-def test_question_is_unsupported_for_now():
-    assert (
-        rules.parse("how much did I spend this week?", VOCAB, date(2026, 10, 1)).tool
-        == "unsupported"
+def test_questions_become_queries():
+    raw = rules.parse("how much did I spend on food last week?", VOCAB, date(2026, 10, 1))
+    assert (raw.tool, raw.metric, raw.category, raw.period) == (
+        "query_spending",
+        "total",
+        "Food",
+        "last_week",
     )
+    raw = rules.parse("total spending in the last 7 days", VOCAB, date(2026, 10, 1))
+    assert (raw.tool, raw.period) == ("query_spending", "last_7_days")
+    assert rules.parse("what's my balance?", VOCAB, date(2026, 10, 1)).tool == "unsupported"
+
+
+@pytest.mark.parametrize(
+    ("period", "start", "end", "label"),
+    [
+        (None, date(2026, 10, 1), date(2026, 11, 1), "this month"),
+        ("today", date(2026, 10, 7), date(2026, 10, 8), "today"),
+        ("this_week", date(2026, 10, 5), date(2026, 10, 8), "this week"),
+        ("last_week", date(2026, 9, 28), date(2026, 10, 5), "last week"),
+        ("last_month", date(2026, 9, 1), date(2026, 10, 1), "last month"),
+        ("last_30_days", date(2026, 9, 8), date(2026, 10, 8), "in the last 30 days"),
+        ("2026-08", date(2026, 8, 1), date(2026, 9, 1), "in August"),
+        ("2026-12", date(2025, 12, 1), date(2026, 1, 1), "in December 2025"),
+        ("2026-10", date(2026, 10, 1), date(2026, 11, 1), "this month"),
+        ("nonsense", date(2026, 10, 1), date(2026, 11, 1), "this month"),
+    ],
+)
+def test_period_range(period, start, end, label):
+    assert period_range(period, date(2026, 10, 7)) == (start, end, label)  # a Wednesday
+
+
+def test_llm_query_tool_resolves_to_a_question():
+    llm = _provider(
+        lambda request: _tool_response(
+            "query_spending",
+            {
+                "metric": "top_categories",
+                "kind": "expense",
+                "category": "",
+                "merchant": "",
+                "account": "",
+                "period": "2026-08",
+            },
+        )
+    )
+    result, parser = understand("where did my money go in august", VOCAB, NOW, [llm])
+    assert parser == "groq"
+    assert isinstance(result, Answerable)
+    assert result.query.metric == "top_categories"
+    assert (result.query.start, result.query.end) == (date(2026, 8, 1), date(2026, 9, 1))
+    assert result.query.month == "2026-08"
+
+
+def test_unknown_category_in_a_question_searches_merchants():
+    raw = RawCommand(tool="query_spending", category="ramesh")
+    result = resolve(raw, VOCAB, NOW)
+    assert isinstance(result, Answerable)
+    assert (result.query.category_id, result.query.merchant) == (None, "ramesh")

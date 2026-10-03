@@ -101,9 +101,9 @@
 {"text": "paid for auto", "tool": "clarify"}
 {"text": "groceries", "tool": "clarify"}
 {"text": "salary credited", "tool": "clarify"}
-{"text": "how much did I spend on food this month", "tool": "unsupported"}
+{"text": "how much did I spend on food this month", "tool": "query_spending", "metric": "total", "category": "Food", "period": "this month"}
 {"text": "what is my balance?", "tool": "unsupported"}
-{"text": "show my expenses", "tool": "unsupported"}
+{"text": "show my expenses", "tool": "query_spending", "metric": "total", "category": null, "period": "this month"}
 {"text": "hello", "tool": "unsupported"}
 {"text": "what's the weather", "tool": "unsupported"}
 {"text": "Bought vegetables from the market for 230 rupees", "tool": "add_transaction", "amount_paise": 23000, "category": "Groceries"}
@@ -121,3 +121,33 @@
 {"text": "500 to swiggy", "tool": "add_transaction", "amount_paise": 50000, "category": "Eating out", "merchant": "Swiggy"}
 {"text": "booked train tickets 1250 yesterday", "tool": "add_transaction", "amount_paise": 125000, "category": "Public transport", "days_ago": 1}
 {"text": "metro card recharge 500", "tool": "add_transaction", "amount_paise": 50000, "category": "Public transport", "account": "UPI"}
+{"text": "how much did I spend last week", "tool": "query_spending", "metric": "total", "period": "last week", "category": null, "kind": "expense"}
+{"text": "how much did I spend today?", "tool": "query_spending", "metric": "total", "period": "today", "kind": "expense"}
+{"text": "what did I spend yesterday", "tool": "query_spending", "metric": "total", "period": "yesterday", "kind": "expense"}
+{"text": "how much have I spent this week", "tool": "query_spending", "metric": "total", "period": "this week", "kind": "expense"}
+{"text": "total spending in the last 7 days", "tool": "query_spending", "metric": "total", "period": "in the last 7 days", "kind": "expense"}
+{"text": "how much did I spend in the past 30 days", "tool": "query_spending", "metric": "total", "period": "in the last 30 days", "kind": "expense"}
+{"text": "how much did I spend on groceries last month", "tool": "query_spending", "metric": "total", "category": "Groceries", "period": "last month", "kind": "expense"}
+{"text": "what did I spend on uber in august", "tool": "query_spending", "metric": "total", "category": "Auto & cab", "period": "in August", "kind": "expense"}
+{"text": "how much did I spend at dmart", "tool": "query_spending", "metric": "total", "category": "Groceries", "kind": "expense"}
+{"text": "how much did I spend on swiggy this year", "tool": "query_spending", "metric": "total", "category": "Eating out", "period": "this year", "kind": "expense"}
+{"text": "how much did I spend at Chai Point this month", "tool": "query_spending", "metric": "total", "merchant": "chai point", "kind": "expense"}
+{"text": "how much did I spend in cash yesterday", "tool": "query_spending", "metric": "total", "account": "Cash", "period": "yesterday", "kind": "expense"}
+{"text": "food spending this month", "tool": "query_spending", "metric": "total", "category": "Food", "period": "this month", "kind": "expense"}
+{"text": "my expenses so far", "tool": "query_spending", "metric": "total", "period": "this month", "kind": "expense"}
+{"text": "how much did I spend on rent in may 2026", "tool": "query_spending", "metric": "total", "category": "Rent", "period": "in May", "kind": "expense"}
+{"text": "top categories last month", "tool": "query_spending", "metric": "top_categories", "period": "last month", "kind": "expense"}
+{"text": "where did my money go this month", "tool": "query_spending", "metric": "top_categories", "period": "this month", "kind": "expense"}
+{"text": "what did I spend the most on in september", "tool": "query_spending", "metric": "top_categories", "period": "in September", "kind": "expense"}
+{"text": "show me the breakdown for this week", "tool": "query_spending", "metric": "top_categories", "period": "this week", "kind": "expense"}
+{"text": "which shops did I spend the most at", "tool": "query_spending", "metric": "top_merchants", "kind": "expense"}
+{"text": "top merchants this year", "tool": "query_spending", "metric": "top_merchants", "period": "this year", "kind": "expense"}
+{"text": "how much is left in my food budget", "tool": "query_spending", "metric": "budget", "category": "Food", "period": "this month", "kind": "expense"}
+{"text": "how's my budget", "tool": "query_spending", "metric": "budget", "category": null, "kind": "expense"}
+{"text": "am I over budget on shopping?", "tool": "query_spending", "metric": "budget", "category": "Shopping", "kind": "expense"}
+{"text": "how are my budgets doing", "tool": "query_spending", "metric": "budget", "kind": "expense"}
+{"text": "how much did I earn this month", "tool": "query_spending", "metric": "total", "kind": "income", "period": "this month"}
+{"text": "how much salary did I get last month", "tool": "query_spending", "metric": "total", "kind": "income", "category": "Salary", "period": "last month"}
+{"text": "total income this year", "tool": "query_spending", "metric": "total", "kind": "income", "period": "this year"}
+{"text": "how much did I receive from mom", "tool": "query_spending", "metric": "total", "kind": "income", "merchant": "mom"}
+{"text": "did I spend a lot on eating out last week", "tool": "query_spending", "metric": "total", "category": "Eating out", "period": "last week", "kind": "expense"}

@@ -844,3 +844,44 @@ button.wide {
   width: auto;
   font-size: 0.85rem;
 }
+
+.answer {
+  width: 100%;
+  display: grid;
+  gap: 0.9rem;
+  text-align: left;
+}
+
+.alerts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.toast {
+  position: fixed;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(40rem, calc(100vw - 2rem));
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.18);
+  z-index: 30;
+}
+
+.toast .alerts {
+  flex: 1;
+}
+
+.toast button {
+  padding: 0.2rem 0.55rem;
+}

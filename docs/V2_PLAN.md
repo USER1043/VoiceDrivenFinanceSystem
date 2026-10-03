@@ -160,7 +160,7 @@ GitHub Actions ──nightly──► encrypted pg_dump → artifact (30 days)
 | **M0** ✅ | Foundation | Monorepo, CI green, compose up locally, schema + migrations + seed, health checks, password login, PWA shell served from the API, Render + Neon deploy, encrypted nightly backups. |
 | **M1** ✅ | Manual tracker | CRUD for transactions/categories/accounts/budgets; dashboard; CSV export; usable daily without voice. |
 | **M2** ✅ | Voice entry | Record → Groq STT → tool call → confirm card → saved; fallback chain tested; eval set ≥ 90%. |
-| **M3** | Queries + budgets | Spending questions answered correctly; budget alerts. |
+| **M3** ✅ | Queries + budgets | Spending questions answered correctly; budget alerts. |
 | **M4** | Reminders + polish | Recurring rules, Web Push reminders (triggered by a GitHub Actions schedule), voice undo/edit. |
 | **M5** | Statement import | UPI/bank statement import with auto-categorisation and dedupe. |
 

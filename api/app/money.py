@@ -23,3 +23,8 @@ def format_inr(paise: int) -> str:
         digits = ",".join([head, *groups, tail]) if head else ",".join([*groups, tail])
     sign = "-" if paise < 0 else ""
     return f"{sign}₹{digits}" + (f".{rem:02d}" if rem else "")
+
+
+def percent(part: int, whole: int) -> int:
+    """Whole percent, rounded half up (the same as the app's Math.round)."""
+    return (part * 200 + whole) // (whole * 2)

@@ -17,7 +17,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.nlu.raw import RawCommand
-from app.nlu.resolve import BudgetProposal, TransactionProposal, Understood, resolve
+from app.nlu.resolve import (
+    Answerable,
+    BudgetProposal,
+    TransactionProposal,
+    Understood,
+    resolve,
+)
 from app.nlu.vocab import Vocabulary
 
 CASES = Path(__file__).with_name("commands.jsonl")
@@ -40,6 +46,19 @@ def load_cases() -> list[dict[str, object]]:
 
 def describe(raw: RawCommand, vocab: Vocabulary) -> dict[str, object]:
     result = resolve(raw, vocab, NOW)
+    if isinstance(result, Answerable):
+        q = result.query
+        category = vocab.category(q.category_id) if q.category_id else None
+        account = next((a.name for a in vocab.accounts if a.id == q.account_id), None)
+        return {
+            "tool": "query_spending",
+            "metric": q.metric,
+            "kind": q.kind.value,
+            "category": category.name if category else None,
+            "merchant": q.merchant,
+            "account": account,
+            "period": q.label,
+        }
     if not isinstance(result, Understood):
         return {"tool": result.status}
     payload = result.payload

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ApiError, api, type Me, type Transaction } from './api'
+import AlertToast from './components/AlertToast'
 import TransactionForm from './components/TransactionForm'
 import VoiceSheet from './components/VoiceSheet'
 import { currentMonth } from './dates'
@@ -36,7 +37,7 @@ function Shell({ me }: { me: Me }) {
         <button type="button" className="fab-small" aria-label="Add transaction manually" onClick={() => setEditing({})}>
           +
         </button>
-        <button type="button" className="fab" aria-label="Speak a transaction" onClick={() => setVoice(true)}>
+        <button type="button" className="fab" aria-label="Speak a transaction or ask a question" onClick={() => setVoice(true)}>
           🎙
         </button>
       </div>
@@ -50,6 +51,7 @@ function Shell({ me }: { me: Me }) {
         <NavLink to="/settings">Settings</NavLink>
       </nav>
 
+      <AlertToast />
       {voice && <VoiceSheet onClose={() => setVoice(false)} />}
       {editing && <TransactionForm transaction={editing.transaction} onClose={() => setEditing(null)} />}
     </>

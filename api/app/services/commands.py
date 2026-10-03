@@ -14,10 +14,11 @@ from app.models import Budget, PendingAction, PendingStatus, Transaction, Transa
 from app.money import format_inr
 from app.nlu.llm import configured_providers
 from app.nlu.pipeline import understand
-from app.nlu.resolve import BudgetProposal, TransactionProposal, Understood, now_in
+from app.nlu.resolve import Answerable, BudgetProposal, TransactionProposal, Understood, now_in
 from app.nlu.vocab import Vocabulary
-from app.schemas import TransactionIn
+from app.schemas import BudgetAlert, TransactionIn
 from app.services import budgets as budget_service
+from app.services import queries as query_service
 from app.services import transactions as transaction_service
 
 Via = Literal["voice", "text"]
@@ -25,10 +26,17 @@ Via = Literal["voice", "text"]
 
 @dataclass
 class CommandResult:
-    status: Literal["proposal", "clarify", "unsupported"]
+    status: Literal["proposal", "answer", "clarify", "unsupported"]
     message: str
     parser: str
     action: PendingAction | None = None
+    answer: query_service.Answer | None = None
+
+
+@dataclass
+class Confirmed:
+    written: Transaction | Budget
+    alerts: list[BudgetAlert]
 
 
 def describe(tool: str, data: dict[str, Any], vocab: Vocabulary, tz: str) -> str:
@@ -69,6 +77,10 @@ def run_command(
     )
     vocab = Vocabulary.load(session, user)
     result, parser = understand(text, vocab, now_in(user.timezone), configured_providers(settings))
+    if isinstance(result, Answerable):
+        session.commit()
+        answer = query_service.answer(session, user, result.query)
+        return CommandResult(status="answer", message=answer.message, parser=parser, answer=answer)
     if not isinstance(result, Understood):
         session.commit()
         return CommandResult(status=result.status, message=result.message, parser=parser)
@@ -102,13 +114,12 @@ def _open_action(session: Session, user: User, action_id: int) -> PendingAction:
     return action
 
 
-def confirm(
-    session: Session, user: User, action_id: int, overrides: dict[str, Any]
-) -> Transaction | Budget:
+def confirm(session: Session, user: User, action_id: int, overrides: dict[str, Any]) -> Confirmed:
     """Apply the user's corrections from the card, validate, and write."""
     action = _open_action(session, user, action_id)
     data = {**action.payload["data"], **overrides}
     written: Transaction | Budget
+    alerts: list[BudgetAlert] = []
     if action.tool == "add_transaction":
         TransactionProposal.model_validate(data)  # shape check before the strict input model
         written = transaction_service.create_transaction(
@@ -118,12 +129,13 @@ def confirm(
             source=TransactionSource(action.payload.get("via", "voice")),
             raw_text=action.source_text,
         )
+        alerts = budget_service.alerts_for(session, user, written)
     else:
         budget = BudgetProposal.model_validate(data)
         written = budget_service.set_budget(session, user, budget.category_id, budget.amount_paise)
     action.status = PendingStatus.CONFIRMED
     session.commit()
-    return written
+    return Confirmed(written, alerts)
 
 
 def cancel(session: Session, user: User, action_id: int) -> None:

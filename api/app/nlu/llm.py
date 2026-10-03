@@ -3,7 +3,8 @@
 Groq and Gemini both expose this API, so one client serves both. The model may only answer
 by calling one of the tools below; anything else is treated as a failure and the next
 provider (ultimately the rule parser) takes over. Only the utterance and the category and
-account names are sent: no amounts, balances or history.
+account names are sent: no amounts, balances or history. Questions are answered from the
+database afterwards, so the model never sees the numbers.
 """
 
 import json
@@ -90,6 +91,44 @@ def _tools(vocab: Vocabulary) -> list[dict[str, Any]]:
             ["category", "amount"],
         ),
         fn(
+            "query_spending",
+            "Answer a question about past spending or income, or how a budget is doing.",
+            {
+                "metric": {
+                    "type": "string",
+                    "enum": ["total", "top_categories", "top_merchants", "budget"],
+                    "description": "total: how much; top_categories: where the money went; "
+                    "top_merchants: which shops/apps/people; budget: how much budget is left.",
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["expense", "income"],
+                    "description": "income for earnings/received money, otherwise expense.",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Category name if the question is about one, else empty.",
+                },
+                "merchant": {
+                    "type": "string",
+                    "description": "Shop, app or person if asked about one that is not a "
+                    "category word, else empty.",
+                },
+                "account": {
+                    "type": "string",
+                    "description": f"One of {', '.join(accounts)} if asked, else empty.",
+                },
+                "period": {
+                    "type": "string",
+                    "description": "One of today, yesterday, this_week, last_week, this_month, "
+                    "last_month, this_year, last_year, last_<N>_days (e.g. last_7_days), or a "
+                    "month as YYYY-MM (the most recent one not in the future). Empty means "
+                    "this month.",
+                },
+            },
+            ["metric", "kind", "category", "merchant", "account", "period"],
+        ),
+        fn(
             "clarify",
             "Ask one short question when the amount (or a budget's category) is missing.",
             {"question": {"type": "string"}},
@@ -97,7 +136,7 @@ def _tools(vocab: Vocabulary) -> list[dict[str, Any]]:
         ),
         fn(
             "unsupported",
-            "Anything that is not logging money or setting a budget (questions, small talk).",
+            "Anything else: small talk, account balances, advice, other topics.",
             {"reason": {"type": "string"}},
             ["reason"],
         ),
@@ -107,7 +146,8 @@ def _tools(vocab: Vocabulary) -> list[dict[str, Any]]:
 def _system_prompt(vocab: Vocabulary, today: date) -> str:
     aliases = "; ".join(f"{c.name}: {', '.join(c.aliases)}" for c in vocab.categories if c.aliases)
     return (
-        "You convert one short spoken note from a user in India into exactly one tool call. "
+        "You convert one short spoken note or question from a user in India into exactly "
+        "one tool call. "
         "Currency is INR. Speech-to-text may contain small errors; use common sense. "
         f"Today is {today:%A, %Y-%m-%d}. "
         "Paying staff (maid, driver) is an expense even if called salary. "
@@ -137,13 +177,24 @@ def to_raw(name: str, args: dict[str, Any]) -> RawCommand:
             category=_blank(args.get("category")),
             amount=_blank(args.get("amount")),
         )
+    if name == "query_spending":
+        metric = args.get("metric")
+        return RawCommand(
+            tool="query_spending",
+            metric=metric if metric in ("top_categories", "top_merchants", "budget") else "total",
+            kind="income" if args.get("kind") == "income" else "expense",
+            category=_blank(args.get("category")),
+            merchant=_blank(args.get("merchant")),
+            account=_blank(args.get("account")),
+            period=_blank(args.get("period")),
+        )
     if name == "clarify":
         return RawCommand(tool="clarify", question=_blank(args.get("question")))
     if name == "unsupported":
         return RawCommand(
             tool="unsupported",
-            question="I can log expenses, income and budgets. Questions about your spending "
-            "are coming in the next update.",
+            question="I can log spending and answer questions like "
+            "“how much did I spend on food this month?”",
         )
     raise ProviderError(f"unknown tool {name!r}")
 

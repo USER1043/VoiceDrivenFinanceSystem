@@ -3,9 +3,10 @@
 A voice-first personal finance tracker: say *"paid 180 for auto"*, confirm the card, done.
 Built for real daily use by you and a few friends (INR, UPI-first), on free infrastructure.
 
-> **Status: V2, milestone M2 (voice entry):** tap the mic, say “paid 180 for auto”, check the
-> card and confirm. Works with no API keys (browser speech + rule parser); a free Groq key
-> upgrades it to Whisper + an LLM. Spending questions are M3.
+> **Status: V2, milestone M3 (questions + budget alerts):** tap the mic, say “paid 180 for
+> auto”, check the card and confirm; or ask “how much did I spend on food this month?”.
+> Budgets warn at 80% and 100%. Works with no API keys (browser speech + rule parser); a free
+> Groq key upgrades it to Whisper + an LLM. Next: reminders (M4).
 >
 > See [`docs/V2_PLAN.md`](docs/V2_PLAN.md) for the
 > full plan and milestones. The original hackathon code is archived at the `v1-hackathon` tag.
