@@ -169,12 +169,32 @@ export type PendingAction =
   | { id: number; tool: 'add_transaction'; data: TransactionDraft; expires_at: string }
   | { id: number; tool: 'set_budget'; data: BudgetDraft; expires_at: string }
 
+export interface BudgetAlert {
+  category_id: number
+  name: string
+  level: 'warning' | 'over'
+  spent_paise: number
+  amount_paise: number
+  message: string
+}
+
+export interface TransactionSaved extends Transaction {
+  alerts: BudgetAlert[]
+}
+
+export interface AnswerItem {
+  label: string
+  amount_paise: number
+  limit_paise: number | null
+}
+
 export interface CommandOut {
-  status: 'proposal' | 'clarify' | 'unsupported'
+  status: 'proposal' | 'answer' | 'clarify' | 'unsupported'
   transcript: string
   message: string
   parser: string
   action: PendingAction | null
+  answer: { total_paise: number | null; items: AnswerItem[] } | null
 }
 
 export interface ConfirmOut {
@@ -182,4 +202,5 @@ export interface ConfirmOut {
   message: string
   transaction: Transaction | null
   budget: Budget | null
+  alerts: BudgetAlert[]
 }

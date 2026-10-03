@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
-import { api, type CommandOut, type ConfirmOut, type PendingAction, type VoiceStatus } from '../api'
+import { type AnswerItem, api, type CommandOut, type ConfirmOut, type PendingAction, type VoiceStatus } from '../api'
 import { fromLocalInput, toLocalInput } from '../dates'
-import { paiseToInput, parseRupees } from '../money'
+import { formatINR, paiseToInput, parseRupees } from '../money'
 import { groupedCategories, useAccounts, useCategories } from '../queries'
 import {
   browserRecognitionAvailable,
@@ -13,11 +13,50 @@ import {
   speak,
   startRecording,
 } from '../voice'
+import { AlertList } from './AlertToast'
+import BudgetMeter from './BudgetMeter'
 import Modal from './Modal'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'answered' | 'saved'
 
-const EXAMPLES = ['paid 180 for auto', 'chai 20 cash', 'swiggy 450 yesterday', 'set food budget to 6000']
+const EXAMPLES = [
+  'paid 180 for auto',
+  'swiggy 450 yesterday',
+  'set food budget to 6000',
+  'how much did I spend on food this month?',
+  'where did my money go last month?',
+]
+
+/** The spoken answer, with the numbers behind it: bars, or budget meters. */
+function AnswerCard({ message, items }: { message: string; items: AnswerItem[] }) {
+  const max = Math.max(...items.map((i) => i.amount_paise), 1)
+  return (
+    <div className="answer">
+      <p className="proposal-message">{message}</p>
+      {items.length > 0 && (
+        <ul className="cat-bars">
+          {items.map((i) =>
+            i.limit_paise ? (
+              <li key={i.label}>
+                <BudgetMeter name={i.label} spent={i.amount_paise} amount={i.limit_paise} />
+              </li>
+            ) : (
+              <li key={i.label} className="cat-link">
+                <span className="cat-row">
+                  <span>{i.label}</span>
+                  <span>{formatINR(i.amount_paise, { whole: true })}</span>
+                </span>
+                <span className="track">
+                  <span className="fill" style={{ width: `${Math.max((i.amount_paise / max) * 100, 1)}%` }} />
+                </span>
+              </li>
+            ),
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 /** The confirm card: every field the parser filled can be corrected before saving. */
 function ProposalCard({
@@ -277,18 +316,25 @@ export default function VoiceSheet({ onClose }: { onClose: () => void }) {
           <>
             {interim && <p className="transcript">“{interim}”</p>}
             {phase === 'thinking' && <p className="muted">Understanding…</p>}
-            {phase === 'answered' && result && (
+            {phase === 'answered' && result?.status === 'answer' && (
+              <AnswerCard message={result.message} items={result.answer?.items ?? []} />
+            )}
+            {phase === 'answered' && result && result.status !== 'answer' && (
               <p className={result.status === 'clarify' ? 'voice-question' : 'muted'}>{result.message}</p>
             )}
             {phase === 'saved' && saved && (
-              <div className="saved">
-                <p>✓ {saved.message}</p>
-                {saved.transaction && (
-                  <button type="button" className="secondary" onClick={() => void undo()}>
-                    Undo
-                  </button>
-                )}
-              </div>
+              <>
+                <div className="saved">
+                  {/* The spoken message also reads the alerts; they are listed below instead. */}
+                  <p>✓ {saved.transaction ? `Saved ${formatINR(saved.transaction.amount_paise)}.` : saved.message}</p>
+                  {saved.transaction && (
+                    <button type="button" className="secondary" onClick={() => void undo()}>
+                      Undo
+                    </button>
+                  )}
+                </div>
+                {saved.alerts.length > 0 && <AlertList alerts={saved.alerts} />}
+              </>
             )}
             {error && <p className="error">{error}</p>}
 

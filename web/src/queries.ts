@@ -8,7 +8,9 @@ import {
   type Transaction,
   type TransactionInput,
   type TransactionPage,
+  type TransactionSaved,
 } from './api'
+import { showAlerts } from './alerts'
 
 export const keys = {
   accounts: ['accounts'] as const,
@@ -64,9 +66,12 @@ export function useSaveTransaction() {
   return useMutation({
     mutationFn: ({ id, data }: { id?: number; data: TransactionInput }) =>
       id === undefined
-        ? api.post<Transaction>('/transactions', data)
+        ? api.post<TransactionSaved>('/transactions', data)
         : api.patch<Transaction>(`/transactions/${id}`, data),
-    onSuccess: invalidate,
+    onSuccess: (saved) => {
+      if ('alerts' in saved) showAlerts((saved as TransactionSaved).alerts)
+      return invalidate()
+    },
   })
 }
 

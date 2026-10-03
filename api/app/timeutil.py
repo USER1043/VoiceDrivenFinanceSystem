@@ -4,6 +4,10 @@ from zoneinfo import ZoneInfo
 
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 _MONTH_RE = re.compile(MONTH_PATTERN)
+MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June", "July", "August", "September",
+    "October", "November", "December",
+]  # fmt: skip
 
 
 def current_month(tz: str) -> str:

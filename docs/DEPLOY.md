@@ -103,7 +103,9 @@ either method works afterwards. People who joined with Google can add a password
 ## 6. Voice keys (optional, free)
 
 Voice works without any keys: the browser turns speech into text, and a built-in rule
-parser understands phrases like "paid 180 for auto" or "set food budget to 6000".
+parser understands phrases like "paid 180 for auto", "set food budget to 6000" or "how much
+did I spend on food last month?". Questions are answered from the database; the LLM only
+works out what was asked and never sees amounts.
 Keys make it better at accents and free-form phrasing:
 
 | Key | Where | What it adds |

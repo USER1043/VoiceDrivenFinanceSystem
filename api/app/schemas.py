@@ -126,6 +126,21 @@ class TransactionPatch(BaseModel):
     note: Note | None = None
 
 
+class BudgetAlert(BaseModel):
+    category_id: int
+    name: str
+    level: Literal["warning", "over"]  # crossed 80%, or reached 100%
+    spent_paise: int
+    amount_paise: int
+    message: str
+
+
+class TransactionSaved(TransactionOut):
+    """A new transaction plus any budgets it pushed past 80% or 100%."""
+
+    alerts: list[BudgetAlert] = []
+
+
 class TransactionPage(BaseModel):
     items: list[TransactionOut]
     total: int
@@ -194,12 +209,24 @@ class PendingActionOut(BaseModel):
     expires_at: datetime
 
 
+class AnswerItem(BaseModel):
+    label: str
+    amount_paise: int
+    limit_paise: int | None = None  # the budget, for budget answers
+
+
+class AnswerOut(BaseModel):
+    total_paise: int | None
+    items: list[AnswerItem]
+
+
 class CommandOut(BaseModel):
-    status: Literal["proposal", "clarify", "unsupported"]
+    status: Literal["proposal", "answer", "clarify", "unsupported"]
     transcript: str
     message: str
     parser: str
     action: PendingActionOut | None = None
+    answer: AnswerOut | None = None  # for questions; `message` is the spoken answer
 
 
 class ConfirmIn(BaseModel):
@@ -218,6 +245,7 @@ class ConfirmOut(BaseModel):
     message: str
     transaction: TransactionOut | None = None
     budget: BudgetOut | None = None
+    alerts: list[BudgetAlert] = []
 
 
 class VoiceStatus(BaseModel):
