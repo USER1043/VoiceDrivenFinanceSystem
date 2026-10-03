@@ -1,8 +1,12 @@
 name: CI
 
+# Pull requests are checked on their own; main is checked again after a merge because the
+# merge commit is new code and Render only deploys main once these checks pass.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
