@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.errors import DomainError
 from app.routers import (
     accounts,
+    admin,
     auth,
     budgets,
     categories,
@@ -41,7 +42,17 @@ def create_app() -> FastAPI:
     app.middleware("http")(_reject_cross_origin_writes)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
-    for module in (me, accounts, categories, transactions, budgets, summary, export, commands):
+    for module in (
+        me,
+        accounts,
+        categories,
+        transactions,
+        budgets,
+        summary,
+        export,
+        commands,
+        admin,
+    ):
         app.include_router(module.router, prefix=API_PREFIX)
     app.add_exception_handler(DomainError, _domain_error)
     app.add_exception_handler(IntegrityError, _integrity_error)

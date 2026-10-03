@@ -3,7 +3,6 @@ import io
 
 import pytest
 
-from app import auth
 from app.config import get_settings
 from tests.conftest import make_settings
 from tests.helpers import add_txn, category_id
@@ -83,6 +82,6 @@ def test_csv_export(client, seeded):
     ],
 )
 def test_everything_requires_login(client, seeded, method, path):
-    settings = make_settings(auth_mode="password", owner_password_hash=auth.hash_password("x" * 12))
+    settings = make_settings(auth_mode="password")
     client.app.dependency_overrides[get_settings] = lambda: settings
     assert client.request(method, path, json={}).status_code == 401

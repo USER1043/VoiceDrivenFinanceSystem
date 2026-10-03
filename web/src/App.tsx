@@ -7,6 +7,7 @@ import VoiceSheet from './components/VoiceSheet'
 import { currentMonth } from './dates'
 import Login from './Login'
 import Budgets from './pages/Budgets'
+import ResetPassword from './ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import Transactions from './pages/Transactions'
@@ -56,6 +57,11 @@ function Shell({ me }: { me: Me }) {
 }
 
 export default function App() {
+  if (window.location.pathname === '/reset') return <ResetPassword />
+  return <Authenticated />
+}
+
+function Authenticated() {
   const me = useQuery({
     queryKey: ['me'],
     queryFn: () => api.get<Me>('/me'),

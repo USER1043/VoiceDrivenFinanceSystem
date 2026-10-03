@@ -12,14 +12,14 @@ fresh codebase; nothing from V1 is carried over except the lessons below.
 
 | Topic | Decision |
 |---|---|
-| Users | Single user (the owner). Every table still has `user_id` so multi-user stays possible. |
+| Users | Several people (friends), each with fully separate data. Open sign-up (can be closed), email + password or Google sign-in, an admin who manages accounts and sees activity counts only. |
 | Platform | Web app, installable as a PWA on the phone. No native app. |
 | Language | English only (Indian English accents and vocabulary: "chai", "auto", "kirana", "recharge"). |
 | Currency | INR only. Amounts stored as integer **paise** (`BIGINT`), never floats. |
 | Payment mix | Mostly UPI. Default accounts: **UPI (bank)**, Cash, Card. |
 | AI / speech | Free hosted tiers with fallbacks (see §4). No self-hosted models, no torch. |
 | Hosting | **Render free web service + Neon free Postgres** on `*.onrender.com` (no domain needed, see §6). Oracle VM + domain is a later upgrade. |
-| Auth | In-app password login (argon2 hash) with 90-day cookie sessions stored hashed in Postgres. |
+| Auth | Per-user argon2 passwords and Google sign-in (OIDC + PKCE); 90-day cookie sessions stored hashed in Postgres; admin-generated one-time reset links (no email needed). |
 | Timeline | No deadline; free-time project. Each milestone must leave the app usable. |
 
 ## 2. Lessons from V1 (what not to repeat)
@@ -107,7 +107,8 @@ PWA (React + Vite + TS)
 
 | Table | Key columns |
 |---|---|
-| `users` | email, timezone (`Asia/Kolkata`) |
+| `users` | email (lowercase), name, timezone, password_hash, google_sub, is_admin, disabled, last_seen_at |
+| `password_resets` | token_hash, expires_at (24 h), used_at, created_by |
 | `login_sessions` | token_hash (SHA-256 of the cookie token), user_agent, expires_at |
 | `accounts` | name, kind (`upi`/`cash`/`card`/`bank`), is_default, archived |
 | `categories` | name, kind (`expense`/`income`), parent_id, aliases[], archived |

@@ -26,7 +26,16 @@ services:
         sync: false
       - key: OWNER_EMAIL
         sync: false
-      - key: OWNER_PASSWORD_HASH # from `uv run python -m app.auth hash-password`
+      - key: OWNER_PASSWORD_HASH # admin's first password; from `uv run python -m app.auth hash-password`
+        sync: false
+      - key: SIGNUP_ENABLED      # set to false to stop new sign-ups
+        value: "true"
+      # Google sign-in (optional). PUBLIC_URL is this service's https://...onrender.com address.
+      - key: PUBLIC_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
         sync: false
       # Optional voice upgrades; voice works without them (browser speech + rule parser).
       - key: GROQ_API_KEY

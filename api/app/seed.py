@@ -126,13 +126,8 @@ def _get_or_create_category(
     return category
 
 
-def seed(session: Session, owner_email: str, timezone: str) -> User:
-    user = session.scalar(select(User).where(User.email == owner_email))
-    if user is None:
-        user = User(email=owner_email, timezone=timezone)
-        session.add(user)
-        session.flush()
-
+def add_defaults(session: Session, user: User) -> None:
+    """Give a user the starter accounts and categories. Never overwrites their edits."""
     existing_accounts = set(session.scalars(select(Account.name).where(Account.user_id == user.id)))
     for name, account_kind, is_default in DEFAULT_ACCOUNTS:
         if name not in existing_accounts:
@@ -148,17 +143,35 @@ def seed(session: Session, owner_email: str, timezone: str) -> User:
             parent = _get_or_create_category(session, user, kind, name, aliases, None)
             for child_name, child_aliases in children:
                 _get_or_create_category(session, user, kind, child_name, child_aliases, parent)
-
     session.flush()
+
+
+def seed(session: Session, admin_email: str, timezone: str, password_hash: str = "") -> User:
+    """Make sure the admin exists, is an admin, and has the defaults.
+
+    `password_hash` (OWNER_PASSWORD_HASH) is only used when the admin has no password yet,
+    so passwords changed in the app are never reset by a redeploy.
+    """
+    email = admin_email.strip().lower()
+    user = session.scalar(select(User).where(User.email == email))
+    if user is None:
+        user = User(email=email, timezone=timezone)
+        session.add(user)
+    user.is_admin = True
+    user.disabled = False
+    if password_hash and not user.password_hash:
+        user.password_hash = password_hash
+    session.flush()
+    add_defaults(session, user)
     return user
 
 
 def main() -> None:
     settings = get_settings()
     with get_sessionmaker()() as session:
-        seed(session, settings.owner_email, settings.timezone)
+        seed(session, settings.admin_email, settings.timezone, settings.owner_password_hash)
         session.commit()
-    print(f"Seeded owner {settings.owner_email}")
+    print(f"Admin ready: {settings.admin_email}")
 
 
 if __name__ == "__main__":

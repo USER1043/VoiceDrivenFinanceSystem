@@ -76,3 +76,31 @@ def client(session: Session, settings: Settings) -> Iterator[TestClient]:
     app.dependency_overrides[get_settings] = lambda: settings
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    from app import auth
+    from app.routers import commands
+
+    for limiter in (
+        auth.login_failures_per_email,
+        auth.login_failures_overall,
+        auth.signups,
+        commands._command_limiter,
+    ):
+        limiter.reset()
+    yield
+
+
+@pytest.fixture
+def accounts_mode(client):
+    """Real accounts (password mode) instead of the dev-mode auto-login."""
+
+    def apply(**overrides):
+        settings = make_settings(auth_mode="password", **overrides)
+        client.app.dependency_overrides[get_settings] = lambda: settings
+        return settings
+
+    apply()
+    return apply
