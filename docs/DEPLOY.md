@@ -18,6 +18,7 @@ GitHub Actions ──nightly──► encrypted pg_dump → workflow artifact (3
 |---|---|---|
 | Render | Sleeps after 15 min without traffic; wakes in ~30–60 s. 750 instance-hours/month. | Optional keep-warm ping (step 6). The UI says "waking up" meanwhile. |
 | Render | Free Postgres is deleted after 30 days. | Use Neon for the database. |
+| Groq / Gemini | Free quotas are shared by everyone on your instance. | Per-person command limit (section 5). |
 | Neon | 100 compute-hours/month; compute sleeps after 5 min idle. 0.5 GB storage. 6 h point-in-time restore. | `/api/health` never touches the DB, so pings don't keep Neon awake. Nightly backups cover more than 6 h. |
 
 ## 1. Create the Neon database
@@ -63,7 +64,43 @@ From then on, Render deploys automatically after CI passes on `main`
 Open the `onrender.com` URL in Chrome on your phone, sign in, then **⋮ → Add to Home
 screen** (or **Install app**). The session lasts 90 days per device.
 
-## 5. Voice keys (optional, free)
+## 5. Friends: accounts and Google sign-in
+
+VoxFin supports several people, each with completely separate data. The account with
+`OWNER_EMAIL` is the **admin**.
+
+- **Sign-up** is open while `SIGNUP_ENABLED=true`. Share the URL; people tap
+  **Create account**. Set it to `false` in Render's **Environment** to close sign-ups
+  (existing accounts keep working).
+- **Forgotten passwords:** there is no email, so open **Settings → People**, tap
+  **Reset link** next to the person and send them the link privately. It works once,
+  for 24 hours, and signs them out of their other devices.
+- **Disable** someone in the same list to sign them out everywhere and block logins.
+  Their data stays.
+- The **People** list shows sign-up date, last seen and activity counts, never
+  anyone's transactions or amounts. Note that whoever holds the Neon database (you) can
+  technically read everything in it, so tell your friends that.
+- Each person gets 30 voice/typed commands per 10 minutes (`COMMANDS_PER_10_MINUTES`) so
+  one heavy user can't use up the shared free AI quota.
+
+### Google sign-in (optional, free)
+
+1. Go to console.cloud.google.com, create a project, then open **Google Auth Platform**.
+2. **Branding:** app name `VoxFin`, your email as support and developer contact.
+3. **Audience:** *External*. Either click **Publish app** (anyone with a Google account
+   can sign in; the basic email/profile scopes need no Google review) or stay in
+   *Testing* and add your friends' Gmail addresses as test users (up to 100).
+4. **Clients → Create client → Web application.** Add the authorized redirect URI
+   `https://<name>.onrender.com/api/auth/google/callback` (exactly, with https).
+5. In Render's **Environment**, set `PUBLIC_URL=https://<name>.onrender.com`,
+   `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then redeploy. A **Continue with
+   Google** button appears on the login screen.
+
+Signing in with Google using the same email as an existing account links the two, so
+either method works afterwards. People who joined with Google can add a password under
+**Settings → Your account**.
+
+## 6. Voice keys (optional, free)
 
 Voice works without any keys: the browser turns speech into text, and a built-in rule
 parser understands phrases like "paid 180 for auto" or "set food budget to 6000".
@@ -84,7 +121,7 @@ Check how well a provider understands your phrases (from `api/`, with the key in
 uv run python -m evals.run --provider groq
 ```
 
-## 6. Nightly backups
+## 7. Nightly backups
 
 In GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
 
@@ -109,7 +146,7 @@ GitHub user.
 gpg --decrypt voxfin-<stamp>.sql.gz.gpg | gunzip | psql "<neon connection string>"
 ```
 
-## 7. Optional: keep it awake
+## 8. Optional: keep it awake
 
 Render sleeps after 15 minutes idle, so the first voice command after a break waits ~30–60 s.
 To avoid that, create a free job at cron-job.org that requests

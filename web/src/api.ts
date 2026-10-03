@@ -64,8 +64,31 @@ export const api = {
 
 export interface Me {
   email: string
+  name: string | null
   timezone: string
-  can_log_out: boolean
+  is_admin: boolean
+  has_password: boolean
+  has_google: boolean
+}
+
+export interface AuthOptions {
+  signup: boolean
+  google: boolean
+}
+
+export interface AdminUserRow {
+  id: number
+  email: string
+  name: string | null
+  is_admin: boolean
+  disabled: boolean
+  has_password: boolean
+  has_google: boolean
+  created_at: string
+  last_seen_at: string | null
+  transactions: number
+  last_transaction_at: string | null
+  commands_last_30_days: number
 }
 
 export type AccountKind = 'upi' | 'cash' | 'card' | 'bank'

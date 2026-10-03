@@ -1,7 +1,7 @@
 # VoxFin
 
 A voice-first personal finance tracker: say *"paid 180 for auto"*, confirm the card, done.
-Built for one person's real daily use (INR, UPI-first), deployed on free infrastructure.
+Built for real daily use by you and a few friends (INR, UPI-first), on free infrastructure.
 
 > **Status: V2, milestone M2 (voice entry):** tap the mic, say “paid 180 for auto”, check the
 > card and confirm. Works with no API keys (browser speech + rule parser); a free Groq key
@@ -16,7 +16,7 @@ Built for one person's real daily use (INR, UPI-first), deployed on free infrast
 |---|---|
 | API | FastAPI · SQLAlchemy 2 · Alembic · Postgres 16 · Pydantic Settings |
 | Web | React · Vite · TypeScript · TanStack Query · installable PWA |
-| Auth | Password login (argon2) with hashed, revocable cookie sessions |
+| Auth | Accounts for several people: email + password (argon2) or Google sign-in; hashed, revocable cookie sessions; admin panel |
 | Speech / AI | Groq Whisper + Groq LLM tool calling, Gemini fallback, offline rule parser (free tiers, all optional) |
 | Deploy | One Docker image (API serves the built PWA) on Render's free tier, Neon free Postgres, nightly encrypted backups via GitHub Actions |
 

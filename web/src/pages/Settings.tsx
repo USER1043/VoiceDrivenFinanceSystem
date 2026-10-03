@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useState } from 'react'
 import { api, type Account, type AccountKind, type Category, type Kind, type Me } from '../api'
+import AdminPanel from './AdminPanel'
 import { useAccounts, useCategories, useSaveAccount, useSaveCategory } from '../queries'
 import { setSpeakingEnabled, speakingEnabled } from '../voice'
 
@@ -202,14 +203,84 @@ function VoiceSettings() {
   )
 }
 
-export default function Settings({ me }: { me: Me }) {
+function AccountSection({ me }: { me: Me }) {
   const client = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [done, setDone] = useState(false)
   const logout = useMutation({
     mutationFn: () => api.post('/auth/logout'),
     onSuccess: () => client.resetQueries(),
   })
+  const change = useMutation({
+    mutationFn: () =>
+      api.post('/auth/password', { current_password: me.has_password ? current : null, new_password: next }),
+    onSuccess: () => {
+      setDone(true)
+      setOpen(false)
+      setCurrent('')
+      setNext('')
+      void client.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    change.mutate()
+  }
+
+  return (
+    <section className="card">
+      <h2>Your account</h2>
+      <p>
+        {me.name && <strong>{me.name} · </strong>}
+        {me.email}
+      </p>
+      <p className="muted small">
+        Signs in with {[me.has_password && 'password', me.has_google && 'Google'].filter(Boolean).join(' and ') || '—'}
+      </p>
+      {done && <p className="status good">✓ Password saved. Other devices were signed out.</p>}
+      {open ? (
+        <form className="form inline-form" onSubmit={submit}>
+          {me.has_password && (
+            <label className="field">
+              <span>Current password</span>
+              <input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+            </label>
+          )}
+          <label className="field">
+            <span>New password (at least 10 characters)</span>
+            <input type="password" autoComplete="new-password" required minLength={10} value={next} onChange={(e) => setNext(e.target.value)} />
+          </label>
+          {change.isError && <p className="error">{change.error.message}</p>}
+          <div className="field-row">
+            <button type="button" className="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" disabled={change.isPending || next.length < 10}>
+              Save password
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="settings-row">
+          <button className="secondary" onClick={() => setOpen(true)}>
+            {me.has_password ? 'Change password' : 'Set a password'}
+          </button>
+          <button className="secondary" onClick={() => logout.mutate()}>
+            Sign out
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+export default function Settings({ me }: { me: Me }) {
   return (
     <>
+      <AccountSection me={me} />
       <VoiceSettings />
       <Accounts />
       <Categories />
@@ -220,16 +291,7 @@ export default function Settings({ me }: { me: Me }) {
           Export CSV
         </a>
       </section>
-      <section className="card row">
-        <p>
-          Signed in as <strong>{me.email}</strong>
-        </p>
-        {me.can_log_out && (
-          <button className="secondary" onClick={() => logout.mutate()}>
-            Sign out
-          </button>
-        )}
-      </section>
+      {me.is_admin && <AdminPanel />}
     </>
   )
 }

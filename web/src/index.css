@@ -798,3 +798,49 @@ button.wide {
 .toggle input {
   width: auto;
 }
+
+/* ---------- Accounts & admin ---------- */
+
+.button.google {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+.divider {
+  text-align: center;
+  margin: 0;
+}
+
+.admin-user {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-user:last-child {
+  border-bottom: none;
+}
+
+.admin-user-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.admin-user p {
+  margin: 0.25rem 0;
+}
+
+.reset-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.reset-link input {
+  flex: 1 1 12rem;
+  width: auto;
+  font-size: 0.85rem;
+}
