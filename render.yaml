@@ -1,0 +1,35 @@
+# Render Blueprint: Dashboard → New → Blueprint → pick this repo.
+# The database lives on Neon (Render's free Postgres is deleted after 30 days).
+# Secrets marked `sync: false` are asked for once in the dashboard and never stored here.
+services:
+  - type: web
+    name: voxfin
+    runtime: docker
+    plan: free
+    region: singapore        # keep close to the Neon region (AWS ap-southeast-1)
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Must not touch the database: Render calls it constantly, and Neon has to be allowed
+    # to scale to zero or the free compute hours run out.
+    healthCheckPath: /api/health
+    # Deploy only after CI is green on the pushed commit.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: AUTH_MODE
+        value: password
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: DATABASE_URL        # Neon connection string (direct, not "-pooler")
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_PASSWORD_HASH # from `uv run python -m app.auth hash-password`
+        sync: false
+      # Optional voice upgrades; voice works without them (browser speech + rule parser).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
